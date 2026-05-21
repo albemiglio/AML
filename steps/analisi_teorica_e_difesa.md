@@ -56,11 +56,11 @@ Nonostante in fase di inferenza/valutazione abbiamo usato la metrica ADD-S per g
 
 ---
 
-## 3. Confronto Rapido (Miglioramenti rispetto al progetto base)
+## 3. Riepilogo delle Soluzioni Tecniche Implementate
 
-Rispetto alla primissima implementazione/bozza base (similmente a quanto presente nei repository iniziali):
-1. **Traslazione Aggiunta:** La bozza iniziale prediceva solo i quaternioni in Fase 3, ignorando del tutto X,Y,Z.
-2. **Matrice di Rotazione:** La bozza originale prediceva 9 numeri raw, producendo matrici deformate. Noi usiamo la rappresentazione a 6D (Zhou, 2019).
-3. **Metriche Corrette:** L'inserimento dell'ADD-S negli evaluator ha evitato misurazioni errate sugli oggetti simmetrici.
-4. **Depth Clipping:** Aggiunto il taglio [0, 3] metri per eliminare i pixel neri del sensore (Z=0) che inquinavano la rete.
-5. **Ingegneria del Software:** Refactoring completo in architettura Phase-Oriented (anziché script mischiati nel root), eliminando le duplicazioni di codice tramite moduli `common/`.
+Per garantire la massima precisione e solidità scientifica alla pipeline, nel nostro codice abbiamo curato le seguenti implementazioni architetturali:
+1. **Estrazione della Traslazione:** Abbiamo implementato una `tvec_head` dedicata in parallelo alla `quat_head` per calcolare X,Y,Z, bilanciando la Loss function con un peso Lambda dedicato per evitare conflitti di magnitudine dei gradienti.
+2. **Matrice di Rotazione 6D:** Per ovviare alla non-ortogonalità delle regressioni lineari standard a 9 valori, utilizziamo la rappresentazione 6D continua (Zhou, 2019) in output, garantendo matrici di rotazione SO(3) fisicamente valide.
+3. **Metriche Ottimizzate (ADD-S):** Abbiamo implementato la logica in valutazione per riconoscere gli oggetti simmetrici (Colla, Eggbox) e applicare la distanza ADD-S, evitando penalizzazioni artificiali e scorrette.
+4. **Depth Clipping:** Abbiamo introdotto un filtro matematico (taglio [0, 3] metri) per pulire le mappe Depth, eliminando i pixel invalidi (Z=0) causati dai riflessi del sensore a infrarossi.
+5. **Architettura Modulare (DRY):** Il progetto è stato strutturato in modo rigorosamente "Phase-Oriented" (`phase2_detection`, `phase3_baseline`, `phase4_fusion`), raggruppando funzioni condivise nella cartella `common/` per massimizzare la manutenibilità e scalabilità del software.
