@@ -64,7 +64,9 @@ Instead of predicting quaternions or a raw 9D matrix, our Phase 4 model's rotati
 ## 4. Experimental Setup
 
 ### 4.1 Dataset and Metrics
-We evaluate our models on a subset of the LineMod dataset. Performance is measured using the standard ADD metric (Average Distance of Model Points). A prediction is considered correct if the ADD error is less than 10% of the object's diameter. For symmetric objects (e.g., Eggbox, Glue), we implement the ADD-S metric, computing the distance to the closest point rather than relying on strict pairwise correspondences, thereby preventing unfair penalization of specularly correct poses.
+We evaluate our models on a subset of the LineMod dataset. Due to data availability in the provided preprocessed source, our subset consists of 13 objects (Ape, Benchvise, Cam, Can, Cat, Driller, Duck, Eggbox, Glue, Holepuncher, Iron, Lamp, Phone), excluding the *Bowl* (ID 3) and *Cup* (ID 7) classes which were not present in the local repository. 
+
+Performance is measured using the standard ADD metric (Average Distance of Model Points). A prediction is considered correct if the ADD error is less than 10% of the object's diameter. For symmetric objects (e.g., Eggbox, Glue), we implement the ADD-S metric, computing the distance to the closest point rather than relying on strict pairwise correspondences, thereby preventing unfair penalization of specularly correct poses.
 
 ### 4.2 Training Details
 Models were trained using the Adam optimizer with an initial learning rate of $1e^{-4}$ and a weight decay of $1e^{-4}$. A `ReduceLROnPlateau` scheduler was employed to halve the learning rate upon validation stagnation. For the Phase 3 baseline, we utilized a freeze/unfreeze strategy, locking the ResNet-50 backbone for the first 10 epochs to prevent catastrophic forgetting of the ImageNet weights during the initial gradient explosion of the randomly initialized heads.
@@ -73,15 +75,40 @@ Models were trained using the Adam optimizer with an initial learning rate of $1
 
 ## 5. Results
 
-### 5.1 Object Detection
-The YOLO11n model achieved near-perfect recall on the test set. By focusing on mAP@50-95, we ensured that the bounding boxes adhered tightly to the physical boundaries of the objects, minimizing the "Formica Effect" (shrinking the object) during the subsequent 224x224 resize operation required by the ResNet backbones.
+### 5.1 Object Detection (Phase 2)
+The YOLO11n model achieved near-perfect recall on the test set, providing a robust foundation for the subsequent pose estimation stages. By focusing on the stringent mAP@50-95 metric, we ensured that the bounding boxes adhered tightly to the physical boundaries of the objects.
 
-### 5.2 The Pinhole Failure (Phase 3 Baseline)
-The RGB-only baseline achieved an excellent 92.9% accuracy when evaluating pure rotation (providing the network with the Ground Truth translation). However, when forced to evaluate the full 6D pose using a Pinhole approximation for the Z-translation, the accuracy collapsed to an abysmal 1.8%. 
-This empirically proves the theoretical limits of monocular pose estimation: estimating depth from the 2D bounding box size assumes a spherical object geometry. For elongated objects like the *Driller*, changing the viewing angle drastically alters the bounding box dimensions, causing the Pinhole formula to hallucinate massive shifts along the Z-axis even when the object is stationary.
+**Table 1: YOLO11n Detection Performance (Test Split)**
+| Metric | Value |
+|:---:|:---:|
+| **mAP@50** | **99.50%** |
+| **mAP@50-95** | **96.03%** |
+| Precision | 99.96% |
+| Recall | 100.00% |
 
-### 5.3 RGB-D Fusion Results
-The introduction of the Depth map and the 6D continuous representation in Phase 4 completely resolved the translation ambiguity. The Global Fusion model achieved an outstanding **98.4% overall accuracy** (ADD < 10% d), with an average error ranging between 3.66 mm and 8.70 mm. The network successfully learned the non-linear correlations between the color and depth domains within the shared 1D latent space, proving highly effective despite the computational simplification.
+### 5.2 RGB-only Baseline: The Pinhole Failure (Phase 3)
+The Phase 3 baseline demonstrated that while a ResNet-50 can effectively learn 3D rotations from RGB images, it fails dramatically at estimating 3D translation. When using the Ground Truth (GT) translation, the model achieves high accuracy, but this collapses when relying on the predicted translation or the geometric Pinhole approximation.
+
+**Table 2: Phase 3 Baseline Accuracy (ADD/ADD-S < 10% d)**
+| Configuration | Translation Source | Global Accuracy (%) |
+|:---|:---|:---:|
+| **GT Crop + T_gt** | Ground Truth | 92.7% |
+| **YOLO + T_gt** | Ground Truth | **92.9%** |
+| **YOLO + T_pinhole** | Pinhole Approximation | 9.4% |
+| **YOLO + T_pred** | Model Regression | **1.8%** |
+
+This results confirm that the "Pinhole effect"—where depth is estimated based on the 2D bounding box size—is mathematically insufficient for non-spherical objects.
+
+### 5.3 RGB-D Global Fusion (Phase 4)
+The introduction of Depth data and the 6D continuous representation in Phase 4 resolved the depth ambiguity. The Global Fusion architecture achieved state-of-the-art performance for a lightweight model on the LineMod subset.
+
+**Table 3: Phase 4 RGB-D Fusion Performance (Test Split)**
+| Model Variant | Backbone (RGB/Depth) | Accuracy (ADD < 10% d) | Avg. Error (mm) |
+|:---|:---|:---:|:---:|
+| **MAIN** | ResNet-50 / ResNet-18 | **98.4%** | 3.66 – 8.70 |
+| **EXTENSION** | ResNet-50 / ResNet-10 (Custom) | 95.8% | 5.13 – 10.15 |
+
+The *Main* variant, utilizing a pre-trained ResNet-18 for the depth branch, outperformed the custom *Extension* model, suggesting that transfer learning benefits even the depth modality when properly adapted.
 
 ---
 

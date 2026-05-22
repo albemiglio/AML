@@ -62,8 +62,8 @@ gdown --fuzzy "https://drive.google.com/file/d/1dvU2vq0fWRbVnVBO0RfM_IEXhQUXLXQE
 gdown --fuzzy "https://drive.google.com/file/d/1TWGOZI667ZZIYBzRVLM7Ma02KlGy9JCR/view?usp=drive_link" -O "$WEIGHTS_ROOT/yolo/best.pt" || echo "⚠️  Fallito download YOLO"
 
 # 6. Esecuzione Script Python
-echo "⚙️  [6/6] Esecuzione data/prepare_yolo_data.py..."
-python data/prepare_yolo_data.py
+echo "⚙️  [6/6] Esecuzione phase2_detection/prepare_yolo_data.py..."
+python phase2_detection/prepare_yolo_data.py
 
 echo "============================================="
 echo "✅ SETUP COMPLETATO!"

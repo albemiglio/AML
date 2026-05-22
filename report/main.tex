@@ -1,0 +1,158 @@
+\documentclass[twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{a4paper, margin=2cm}
+
+\title{Enhancing 6D Object Pose Estimation: From RGB Baseline to Lightweight RGB-D Global Fusion}
+\author{Team Members ID: [ENTER IDS HERE]}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Accurate 6D object pose estimation is a critical challenge in computer vision, with applications ranging from robotic manipulation to augmented reality. In this paper, we present a comprehensive pipeline for estimating the 3D translation and 3D rotation of objects using the LineMod dataset. We propose a disjointed, phase-oriented architecture starting with a lightweight 2D object detector (YOLO11n) to isolate regions of interest, followed by a dual-head ResNet-50 baseline that predicts quaternions and translation vectors from RGB images. To overcome the inherent depth-ambiguity of monocular vision, we extend our pipeline with a lightweight RGB-D Global Fusion model inspired by DenseFusion. Furthermore, we replace naive rotation regression with a 6D continuous representation, ensuring the generation of mathematically valid orthogonal rotation matrices. Our results demonstrate a dramatic improvement in pose accuracy, leaping from a 1.9\% accuracy in the RGB-only baseline to 98.4\% when leveraging depth data and 6D continuous representations, proving the efficacy of our architectural choices.
+\end{abstract}
+
+\section{Introduction}
+The ability to perceive the exact 6D pose (3D position and 3D orientation) of an object is a fundamental prerequisite for advanced robotic interactions in unstructured environments. While 2D object detection has seen tremendous advancements with the advent of Convolutional Neural Networks (CNNs), lifting these predictions into the 3D space remains challenging due to the loss of depth information during the camera projection process. 
+
+Traditional approaches relying solely on RGB images often struggle with depth ambiguity, especially when dealing with texture-less or symmetric objects. The introduction of affordable RGB-D sensors has mitigated this issue, allowing networks to fuse color features with explicit geometric structures. 
+
+In this work, we tackle the 6D pose estimation problem through an incremental engineering approach. We first establish a robust 2D detection framework using YOLO11n to extract precise Regions of Interest (RoI). Subsequently, we develop an RGB-only baseline utilizing a ResNet-50 backbone equipped with a dual regression head to predict both the translation vector and the rotation quaternion, optimized via a balanced composite loss function. Finally, we introduce our core contribution: a lightweight RGB-D Global Fusion architecture. To guarantee the physical validity of the predicted rotation matrices, we implement a 6D continuous rotation representation (Zhou et al., 2019), avoiding the pitfalls of naive 9D linear regression. We comprehensively evaluate our models on the LineMod dataset, highlighting the severe limitations of pinhole-based depth estimation and demonstrating the overwhelming superiority of multimodal fusion.
+
+\section{Related Work}
+
+\subsection{2D Object Detection}
+Modern object detection is dominated by deep learning frameworks. The YOLO (You Only Look Once) family has set the standard for real-time detection by framing the problem as a single regression task. In our pipeline, we utilize YOLO11, specifically the Nano variant, to minimize computational overhead during the preprocessing stage while maintaining high recall.
+
+\subsection{6D Pose Estimation from RGB}
+Early deep learning methods for 6D pose estimation, such as PoseCNN (Xiang et al., 2017), directly regress the 3D translation and quaternions from RGB images. While effective, these methods inherently suffer from depth ambiguity. Predicting the Z-axis translation relies heavily on the apparent size of the bounding box, an approximation that fails drastically for elongated objects viewed from different angles.
+
+\subsection{RGB-D Fusion}
+To address the limitations of monocular vision, DenseFusion (Wang et al., 2019) proposed a pixel-wise dense fusion network that extracts features from RGB images and 3D point clouds separately before fusing them geometrically. While highly robust against occlusions, DenseFusion is computationally expensive. Our work proposes a "Global Fusion" alternative, extracting 1D latent vectors from both modalities and fusing them in a shared latent space, trading off dense spatial alignment for significant computational efficiency.
+
+\subsection{Rotation Representations}
+Representing 3D rotations in neural networks is notoriously difficult. Euler angles suffer from Gimbal Lock, and quaternions, while popular, require enforcement of unit length and suffer from antipodal ambiguity. Naively regressing a 3x3 matrix (9 values) often yields non-orthogonal matrices that distort the 3D space. We adopt the 6D continuous representation proposed by Zhou et al. (2019), which utilizes a Gram-Schmidt orthogonalization process to guarantee the generation of a valid SO(3) matrix, stabilizing the gradient flow during training.
+
+\section{Methodology}
+Our proposed pipeline is divided into three consecutive phases: 2D Detection, RGB-only Baseline, and RGB-D Fusion.
+
+\subsection{2D Object Detection (Phase 2)}
+The first stage of our pipeline aims to isolate the object from the background clutter. We train a YOLO11n model on the LineMod dataset. Rather than evaluating the model on a standard mAP@50 metric, we optimize for mAP@50-95. A tight bounding box is mathematically critical for the subsequent pose estimation stages: an oversized crop introduces background noise that can severely corrupt the rotation features extracted by the ResNet backbone.
+
+\subsection{RGB-only Baseline (Phase 3)}
+We build a baseline model using a ResNet-50 backbone initialized with ImageNet weights. The original classification head is replaced by a custom dual-head regression module:
+\begin{itemize}
+    \item \textbf{Translation Head (\texttt{tvec\_head}):} A linear layer mapping the 2048D feature vector to a 3D vector representing the X, Y, Z translation in meters.
+    \item \textbf{Rotation Head (\texttt{quat\_head}):} A linear layer predicting a 4D quaternion, strictly normalized via L2-normalization in the forward pass.
+\end{itemize}
+
+\textbf{Balanced Loss Function:} Training both heads simultaneously requires balancing their respective gradients. We employ a composite loss:
+\begin{equation}
+Loss = L_{rot}(q_{pred}, q_{gt}) + \lambda \cdot L_{trans}(t_{pred}, t_{gt})
+\end{equation}
+where $L_{rot} = 1 - |q_{pred} \cdot q_{gt}|$ and $L_{trans}$ is the Mean Squared Error (MSE). The parameter $\lambda$ is set to 1.0. This selection is justified by the natural alignment of the component scales: since $L_{rot} \in [0, 1]$ and the MSE of translation in meters for LineMod typically falls within $[0.01, 1.0]$, the gradients remain balanced without the need for extreme weighting factors.
+
+\subsection{RGB-D Global Fusion (Phase 4)}
+To overcome the depth ambiguity of Phase 3, we introduce depth data. 
+\textbf{Depth Preprocessing:} Raw depth maps contain invalid pixels (Z=0) due to sensor reflections. We apply a mathematical clipping filter, clamping depth values between 0.0 and 3.0 meters, effectively neutralizing sensor noise while covering the entire operative range of the LineMod dataset.
+
+\textbf{Global Fusion Architecture:}
+Our architecture extracts global features from both modalities:
+1. The RGB image is processed by a ResNet-50 backbone.
+2. The Depth image is processed by a secondary CNN (a ResNet-18 initialized on ImageNet via channel replication).
+3. A Meta-encoder processes the camera intrinsics and bounding box coordinates into a 64D prior.
+These vectors are concatenated and passed through a Multi-Layer Perceptron (MLP) to project them into a shared 256D latent space, which feeds the final rotation and translation heads.
+
+\subsection{6D Continuous Rotation Representation}
+Instead of predicting quaternions or a raw 9D matrix, our Phase 4 model's rotation head is designed as \texttt{nn.Linear(256, 6)}. These 6 values are split into two 3D vectors. Using a differentiable Gram-Schmidt process, the first vector is normalized, and the second is made orthogonal to the first and normalized. The third vector is computed via the cross product. This guarantees that the network's output always belongs to SO(3).
+
+\section{Experimental Setup}
+
+\subsection{Dataset and Metrics}
+We evaluate our models on a subset of the LineMod dataset. Due to data availability in the provided preprocessed source, our subset consists of 13 objects (Ape, Benchvise, Cam, Can, Cat, Driller, Duck, Eggbox, Glue, Holepuncher, Iron, Lamp, Phone), excluding the \textit{Bowl} (ID 3) and \textit{Cup} (ID 7) classes which were not present in the local repository. 
+
+Performance is measured using the standard ADD metric (Average Distance of Model Points). A prediction is considered correct if the ADD error is less than 10\% of the object's diameter. For symmetric objects (e.g., Eggbox, Glue), we implement the ADD-S metric.
+
+\subsection{Training Details}
+Models were trained using the Adam optimizer with an initial learning rate of $1e^{-4}$ and a weight decay of $1e^{-4}$. A \texttt{ReduceLROnPlateau} scheduler was employed to halve the learning rate upon validation stagnation. 
+
+\section{Results}
+
+\subsection{Object Detection (Phase 2)}
+The YOLO11n model achieved near-perfect recall on the test set. By focusing on the stringent mAP@50-95 metric, we ensured that the bounding boxes adhered tightly to the physical boundaries of the objects, minimizing the \textbf{downsampling distortion} during the subsequent resize operation required by the ResNet-based backbones.
+
+\begin{table}[h]
+\centering
+\caption{YOLO11n Detection Performance (Test Split)}
+\begin{tabular}{lc}
+\toprule
+Metric & Value \\
+\midrule
+\textbf{mAP@50} & \textbf{99.50\%} \\
+\textbf{mAP@50-95} & \textbf{96.03\%} \\
+Precision & 99.96\% \\
+Recall & 100.00\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{RGB-only Baseline: The Pinhole Failure (Phase 3)}
+The Phase 3 baseline demonstrated that while a ResNet-50 can effectively learn 3D rotations, it fails dramatically at estimating 3D translation.
+
+\begin{table}[h]
+\centering
+\caption{Phase 3 Baseline Accuracy (ADD/ADD-S $<$ 10\% d)}
+\begin{tabular}{llc}
+\toprule
+Configuration & Translation Source & Global Accuracy (\%) \\
+\midrule
+\textbf{GT Crop + T\_gt} & Ground Truth & 92.7\% \\
+\textbf{YOLO + T\_gt} & Ground Truth & \textbf{92.9\%} \\
+\textbf{YOLO + T\_pinhole} & Pinhole Approx. & 9.4\% \\
+\textbf{YOLO + T\_pred} & Model Regression & \textbf{1.8\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{RGB-D Fusion Results (Phase 4)}
+The introduction of Depth data and the 6D continuous representation in Phase 4 resolved the depth ambiguity. 
+
+\begin{table}[h]
+\centering
+\caption{Phase 4 RGB-D Fusion Performance (Test Split)}
+\begin{tabular}{llcc}
+\toprule
+Model Variant & Backbone & Accuracy & Avg. Error (mm) \\
+\midrule
+\textbf{MAIN} & R50 / R18 & \textbf{98.4\%} & 3.66 -- 8.70 \\
+\textbf{EXTENSION} & R50 / R10 & 95.8\% & 5.13 -- 10.15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussions and Limitations}
+We identify three critical theoretical limitations:
+1) \textbf{Aspect Ratio Distortion:} Currently using Square Crop; Square Padding would be superior.
+2) \textbf{Horizontal Flip Paradox:} Flipping must be disabled in end-to-end pose estimation.
+3) \textbf{Global vs. Dense Fusion:} Global fusion is lightweight but theoretically less robust to occlusions than dense pixel-wise matching.
+
+\section{Conclusion}
+We demonstrated that while RGB-only networks can effectively learn 3D rotations, they suffer catastrophic failures in translation estimation. By integrating depth data and enforcing SO(3) physical constraints, we achieved a massive performance leap (from 1.9\% to 98.4\% accuracy).
+
+\begin{thebibliography}{9}
+\bibitem{wang2019densefusion} Wang, C., et al. (2019). Densefusion: 6d object pose estimation by iterative dense fusion. CVPR.
+\bibitem{zhou2019continuity} Zhou, Y., et al. (2019). On the continuity of rotation representations in neural networks. CVPR.
+\bibitem{xiang2017posecnn} Xiang, Y., et al. (2017). PoseCNN: A convolutional neural network for 6d object pose estimation.
+\bibitem{hinterstoisser2012model} Hinterstoisser, S., et al. (2012). Model based training, detection and pose estimation. ACCV.
+\end{thebibliography}
+
+\end{document}
