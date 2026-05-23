@@ -1,0 +1,144 @@
+% ===================================================================
+% 3. Methodology
+% ===================================================================
+\section{Methodology}
+\label{sec:method}
+
+Our proposed pipeline is divided into three consecutive phases: 2D Object Detection, RGB-only Baseline Pose Estimation, and RGB-D Global Fusion. Each phase builds upon the previous one, incrementally addressing the challenges of the 6D pose estimation task. The overall architecture is summarized in Figure~\ref{fig:pipeline}.
+
+% ------------------------------------------------------------------
+\subsection{2D Object Detection}
+\label{sec:method_detection}
+
+The first stage of our pipeline aims to isolate target objects from the background clutter. We fine-tune a YOLO11n~\cite{ultralytics2024yolo11} model on the LineMod dataset~\cite{hinterstoisser2012model}, starting from pre-trained ImageNet weights.
+
+\paragraph{Dataset Format Conversion}
+The LineMod dataset provides bounding box annotations in the format $[x, y, w, h]$ (top-left corner plus width and height in pixels). YOLO requires normalized center coordinates $[c_x, c_y, w_n, h_n]$, where all values lie in $[0,1]$. The conversion is performed as:
+\begin{equation}
+    c_x = \frac{x + w/2}{W}, \quad c_y = \frac{y + h/2}{H}, \quad w_n = \frac{w}{W}, \quad h_n = \frac{h}{H}
+    \label{eq:bbox_conv}
+\end{equation}
+where $W$ and $H$ denote the image dimensions (640$\times$480 for LineMod).
+
+\paragraph{Metric Selection}
+Rather than relying solely on the standard mAP@50 metric, we prioritize the more stringent mAP@50-95 (mean AP computed over IoU thresholds from 0.5 to 0.95 with step 0.05). A tight bounding box is mathematically critical for the subsequent pose estimation stages: an oversized crop introduces background noise that can corrupt the rotation features extracted by the ResNet backbone.
+
+% ------------------------------------------------------------------
+\subsection{RGB-only Baseline Pose Estimation}
+\label{sec:method_baseline}
+
+\paragraph{Architecture}
+We build a baseline model using a ResNet-50~\cite{he2016deep} backbone initialized with ImageNet (\texttt{IMAGENET1K\_V1}) pre-trained weights. The original 1000-class classification head is removed (replaced by \texttt{nn.Identity()}) to expose the 2048-dimensional feature vector. Two parallel linear regression heads are attached:
+
+\begin{itemize}
+    \item \textbf{Rotation Head} (\texttt{quat\_head}): $\R^{2048} \rightarrow \R^{4}$, producing a quaternion $\bq = (x, y, z, w)$, followed by L2-normalization in the forward pass to enforce unit length: $\hat{\bq} = \bq / \|\bq\|_2$.
+    \item \textbf{Translation Head} (\texttt{tvec\_head}): $\R^{2048} \rightarrow \R^{3}$, predicting the 3D translation vector $\bt = (t_x, t_y, t_z)$ in meters.
+\end{itemize}
+
+\paragraph{Input Pipeline}
+Each input image is cropped around the object using a square crop centered on the bounding box: $\text{side} = \max(w, h)$. The crop is resized to $224 \times 224$ pixels via bicubic interpolation and normalized with ImageNet mean and standard deviation. During training, we apply \texttt{ColorJitter} (brightness$=$0.2, contrast$=$0.2), \texttt{GaussianBlur} ($p$=0.2), and \texttt{RandomErasing} ($p$=0.25) to simulate illumination variations, sensor blur, and partial occlusions. Crucially, no geometric augmentations (horizontal flip, rotation) are applied, as these would invalidate the ground-truth 3D pose.
+
+\paragraph{Loss Function}
+Training both heads simultaneously requires balancing their gradients. We employ a composite loss:
+\begin{equation}
+    \mathcal{L}_{\text{baseline}} = \mathcal{L}_{\text{rot}}(\bq_{\text{pred}}, \bq_{\text{gt}}) + \lambda \cdot \mathcal{L}_{\text{trans}}(\bt_{\text{pred}}, \bt_{\text{gt}})
+    \label{eq:baseline_loss}
+\end{equation}
+where the rotation loss leverages the quaternion inner product:
+\begin{equation}
+    \mathcal{L}_{\text{rot}} = 1 - |\bq_{\text{pred}} \cdot \bq_{\text{gt}}|
+    \label{eq:rot_loss}
+\end{equation}
+The absolute value ensures invariance to the quaternion antipodal ambiguity ($\bq \equiv -\bq$). The translation loss is the Mean Squared Error (MSE):
+\begin{equation}
+    \mathcal{L}_{\text{trans}} = \text{MSE}(\bt_{\text{pred}}, \bt_{\text{gt}})
+    \label{eq:trans_loss}
+\end{equation}
+The balance parameter $\lambda$ is set to 1.0. Since $\mathcal{L}_{\text{rot}} \in [0, 1]$ and $\mathcal{L}_{\text{trans}}$ operates in squared meters (typical values $\sim 0.01$--$0.1~\text{m}^2$ for LineMod objects at 0.3--0.7\,m distance), the two terms are naturally well-balanced.
+
+\paragraph{Pinhole Translation Estimation}
+As an additional evaluation baseline, we implement a geometric depth estimation using the pinhole camera model. Given a bounding box with pixel size $s = \max(w, h)$ and the known real-world object diameter $d$, the depth is estimated as:
+\begin{equation}
+    Z = \frac{f_x \cdot d}{s}, \quad X = \frac{(u - c_x) \cdot Z}{f_x}, \quad Y = \frac{(v - c_y) \cdot Z}{f_y}
+    \label{eq:pinhole}
+\end{equation}
+where $(u, v)$ is the bounding box center, $(c_x, c_y)$ is the camera principal point, and $(f_x, f_y)$ are the focal lengths. This approximation implicitly assumes a spherical object, leading to significant errors for elongated or asymmetric geometries.
+
+% ------------------------------------------------------------------
+\subsection{RGB-D Global Fusion}
+\label{sec:method_fusion}
+
+To overcome the inherent depth ambiguity of monocular vision, we introduce a multi-modal architecture that fuses RGB and depth data, inspired by DenseFusion~\cite{wang2019densefusion} but implemented as a computationally efficient 2D global fusion.
+
+\paragraph{Depth Preprocessing}
+Raw depth maps from the LineMod sensor contain invalid pixels (depth$=$0) due to infrared reflections. We convert raw values to meters using the per-image depth scale from the dataset metadata, and apply a mathematical clipping filter:
+\begin{equation}
+    d_{\text{clean}} = \text{clip}\left(\frac{d_{\text{raw}} \cdot s_{\text{depth}}}{1000}, \; 0.0, \; 3.0\right) \; [\text{m}]
+    \label{eq:depth_clip}
+\end{equation}
+The upper bound of 3.0\,m covers the entire operative range of the LineMod dataset (objects at 0.3--0.7\,m, background $<$ 2\,m) while neutralizing outlier readings.
+
+\paragraph{Global Fusion Architecture}
+Our architecture extracts global features from three input modalities via independent branches:
+
+\begin{enumerate}
+    \item \textbf{RGB Branch}: A pre-trained ResNet-50 backbone processes the $224\!\times\!224\!\times\!3$ RGB crop through global average pooling, yielding a 2048D feature vector $\mathbf{f}_{\text{rgb}}$.
+    \item \textbf{Depth Branch}: A secondary CNN processes the cropped depth map to produce a 512D feature vector $\mathbf{f}_{\text{depth}}$. In the \emph{Main} variant, we use a pre-trained ResNet-18 by replicating the single-channel depth map across 3 channels to match the expected input format. In the \emph{Extension} variant, we design a custom single-channel ResNet-like backbone (4 residual blocks, trained from scratch).
+    \item \textbf{Meta-Branch}: An auxiliary encoder processes an 8D vector of geometric metadata:
+    \begin{equation}
+    \mathbf{m} = \left[\frac{c_x}{W},\; \frac{c_y}{H},\; \frac{w}{W},\; \frac{h}{H},\; \frac{f_x}{1000},\; \frac{f_y}{1000},\; \frac{p_x}{W},\; \frac{p_y}{H}\right]
+    \label{eq:meta}
+    \end{equation}
+    consisting of normalized bounding box coordinates and camera intrinsics. A two-layer MLP ($8 \rightarrow 128 \rightarrow 64$) maps this prior to a 64D vector $\mathbf{f}_{\text{meta}}$.
+\end{enumerate}
+
+The three feature vectors are concatenated into a single 2624D representation:
+\begin{equation}
+    \mathbf{f}_{\text{fused}} = [\mathbf{f}_{\text{rgb}} \,\|\, \mathbf{f}_{\text{depth}} \,\|\, \mathbf{f}_{\text{meta}}] \in \R^{2624}
+    \label{eq:concat}
+\end{equation}
+This fused vector is processed by an MLP ($2624 \rightarrow 512 \rightarrow 256$) to project it into a shared 256D latent space, which feeds the final translation and rotation heads.
+
+\paragraph{Comparison with DenseFusion}
+Table~\ref{tab:densefusion_comparison} summarizes the architectural differences between the original DenseFusion~\cite{wang2019densefusion} and our Global Fusion approach.
+
+\begin{table}[t]
+    \centering
+    \caption{Comparison between DenseFusion and our Global Fusion architecture.}
+    \label{tab:densefusion_comparison}
+    \small
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Aspect} & \textbf{DenseFusion} & \textbf{Ours} \\
+        \midrule
+        Fusion strategy & Dense per-pixel & Global concatenation \\
+        Depth processing & PointNet (3D) & CNN on 2D depth map \\
+        Rotation repr. & Quaternion & 6D continuous \\
+        Iterative refin. & Yes & No \\
+        Meta-branch & No & Yes (bbox + $\mathbf{K}$) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ------------------------------------------------------------------
+\subsection{6D Continuous Rotation Representation}
+\label{sec:method_rotation6d}
+
+Instead of predicting quaternions or a raw 9D matrix, our Phase~4 model's rotation head outputs 6 values that are mapped to a valid rotation matrix via a differentiable Gram-Schmidt process~\cite{zhou2019continuity}. Given the raw output $\mathbf{a}_1, \mathbf{a}_2 \in \R^3$:
+\begin{align}
+    \mathbf{b}_1 &= \frac{\mathbf{a}_1}{\|\mathbf{a}_1\|} \label{eq:gs1} \\[3pt]
+    \mathbf{b}_2 &= \frac{\mathbf{a}_2 - (\mathbf{b}_1 \cdot \mathbf{a}_2)\,\mathbf{b}_1}{\|\mathbf{a}_2 - (\mathbf{b}_1 \cdot \mathbf{a}_2)\,\mathbf{b}_1\|} \label{eq:gs2} \\[3pt]
+    \mathbf{b}_3 &= \mathbf{b}_1 \times \mathbf{b}_2 \label{eq:gs3}
+\end{align}
+The resulting matrix $\bR = [\mathbf{b}_1 \mid \mathbf{b}_2 \mid \mathbf{b}_3]$ is guaranteed to belong to $\SO$ by construction ($\det(\bR) = +1$, orthonormal columns). This representation is continuous and differentiable, ensuring stable gradient flow during backpropagation.
+
+% ------------------------------------------------------------------
+\subsection{Loss Function for RGB-D Fusion}
+\label{sec:method_add_loss}
+
+Unlike the composite loss of the baseline (Eq.~\ref{eq:baseline_loss}), the Phase~4 model is trained directly with the ADD (Average Distance of Model Points) metric as the loss function:
+\begin{equation}
+    \mathcal{L}_{\text{ADD}} = \frac{1}{N} \sum_{i=1}^{N} \|(\bR_{\text{pred}} \cdot \bp_i + \bt_{\text{pred}}) - (\bR_{\text{gt}} \cdot \bp_i + \bt_{\text{gt}})\|_2
+    \label{eq:add_loss}
+\end{equation}
+where $\{\bp_i\}_{i=1}^N$ are $N$=500 points sampled from the 3D CAD model. This formulation directly optimizes the metric used for evaluation, eliminating the need for the ad-hoc balancing parameter $\lambda$ between rotation and translation losses.

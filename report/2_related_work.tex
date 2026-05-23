@@ -1,0 +1,29 @@
+% ===================================================================
+% 2. Related Work
+% ===================================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{2D Object Detection}
+\label{sec:related_detection}
+
+Modern object detection is dominated by deep learning frameworks. The YOLO (You Only Look Once) family~\cite{ultralytics2024yolo11} has set the standard for real-time detection by framing the problem as a single regression task. In our pipeline, we utilize YOLO11, specifically the Nano variant, to minimize computational overhead during the preprocessing stage while maintaining high recall. The role of the detector in our architecture is to produce tight bounding box crops that isolate the object from the background clutter — a critical prerequisite for the subsequent pose estimation stages.
+
+\subsection{6D Pose Estimation from RGB}
+\label{sec:related_rgb_pose}
+
+Early deep learning methods for 6D pose estimation directly regress the 3D translation and orientation from RGB images. PoseCNN~\cite{xiang2018posecnn} introduced an end-to-end architecture that localizes objects and estimates poses via a regression head. While effective for rotation, these methods inherently suffer from \emph{depth ambiguity}: predicting the Z-axis translation relies heavily on the apparent size of the bounding box, an approximation that fails drastically for elongated or asymmetric objects viewed from varying angles.
+
+\subsection{RGB-D Fusion for Pose Estimation}
+\label{sec:related_rgbd}
+
+To address the fundamental limitations of monocular vision, researchers have leveraged depth sensors to provide explicit geometric information. DenseFusion~\cite{wang2019densefusion} proposed a pixel-wise dense fusion network that extracts features from RGB images and 3D point clouds separately before fusing them via a per-pixel heterogeneous concatenation. While highly robust against partial occlusions, DenseFusion is computationally expensive due to the point cloud processing and iterative refinement.
+
+Our work proposes a ``Global Fusion'' alternative, extracting 1D global latent vectors from both modalities through independent backbones and fusing them via concatenation in a shared latent space. This architectural simplification trades off dense spatial alignment for computational efficiency, while still achieving competitive accuracy on the LineMod benchmark~\cite{hinterstoisser2012model}.
+
+\subsection{Rotation Representations in Neural Networks}
+\label{sec:related_rotation}
+
+Representing 3D rotations in neural networks is notoriously difficult. Euler angles suffer from Gimbal Lock, and quaternions require enforcement of the unit-length constraint and suffer from \emph{antipodal ambiguity}. Naively regressing a $3\times 3$ rotation matrix (9 values) from a fully connected layer produces matrices that are almost never orthogonal, yielding physically invalid transformations. 
+
+Zhou \etal~\cite{zhou2019continuity} demonstrated that any rotation representation in $\R^n$ with $n < 5$ is necessarily discontinuous, and proposed a 6D continuous representation that maps two unconstrained 3D vectors to a valid $\SO$ matrix via a differentiable Gram-Schmidt orthogonalization process. This approach stabilizes the gradient flow during training. We adopt this representation in our Phase~4 model.

@@ -1,0 +1,28 @@
+% ===================================================================
+% 1. Introduction
+% ===================================================================
+\section{Introduction}
+\label{sec:intro}
+
+The ability to perceive the exact 6D pose — comprising a 3D translation vector $\bt \in \R^3$ and a 3$\times$3 rotation matrix $\bR \in \SO$ — of an object is a fundamental prerequisite for advanced robotic interactions in unstructured environments. While 2D object detection has seen tremendous advancements with the advent of Convolutional Neural Networks (CNNs), lifting these predictions into the 3D space remains challenging due to the loss of depth information during the camera projection process.
+
+Traditional approaches relying solely on RGB images often struggle with depth ambiguity, especially when dealing with texture-less or symmetric objects. The introduction of affordable RGB-D sensors~\cite{hinterstoisser2012model} has mitigated this issue, allowing networks to fuse color features with explicit geometric structures.
+
+In this work, we tackle the 6D pose estimation problem through an incremental engineering approach, structured in three consecutive phases:
+
+\begin{enumerate}
+    \item \textbf{2D Object Detection.} We establish a robust 2D detection framework using YOLO11n~\cite{ultralytics2024yolo11} to extract precise Regions of Interest (RoI), evaluated through the stringent mAP@50-95 metric.
+    
+    \item \textbf{RGB-only Baseline.} We develop an RGB-only baseline utilizing a ResNet-50 backbone equipped with a dual regression head to predict both the translation vector and the rotation quaternion, optimized via a balanced composite loss function.
+    
+    \item \textbf{RGB-D Global Fusion.} We introduce a lightweight RGB-D Global Fusion architecture inspired by DenseFusion~\cite{wang2019densefusion}. To guarantee the physical validity of the predicted rotation matrices, we implement a 6D continuous rotation representation~\cite{zhou2019continuity}, avoiding the pitfalls of naive 9D linear regression.
+\end{enumerate}
+
+We comprehensively evaluate our models on the LineMod dataset~\cite{hinterstoisser2012model}, highlighting the severe limitations of pinhole-based depth estimation and demonstrating the overwhelming superiority of multimodal fusion. Our main contributions are as follows:
+
+\begin{itemize}
+    \item A modular, phase-oriented pipeline that incrementally addresses the 6D pose estimation problem, from 2D detection to full RGB-D fusion.
+    \item A systematic analysis of the failure modes of monocular (RGB-only) pose estimation, including the mathematical inadequacy of pinhole-based depth approximation for non-spherical objects.
+    \item A lightweight Global Fusion architecture that achieves 98.4\% accuracy on the LineMod subset, closing the gap with computationally expensive dense fusion methods.
+    \item The adoption of 6D continuous rotation representations~\cite{zhou2019continuity}, ensuring the generation of valid $\SO$ matrices via differentiable Gram-Schmidt orthogonalization.
+\end{itemize}
