@@ -102,25 +102,48 @@ pip install --quiet \
     gdown \
     scikit-learn
 
-# ---------- 2. Dataset ----------
-log "=== 2/5: dataset ==="
+# ---------- 2. Dataset + (optionally) weights from team Drive bundle ----------
+log "=== 2/5: dataset + weights bundle ==="
+# URL della folder Drive del team (override via env). Stesso bundle usato da
+# download_data_and_weights.sh — vedi quello script per la struttura attesa.
+AML_BUNDLE_URL="${AML_BUNDLE_URL:-https://drive.google.com/drive/folders/<FOLDER_ID>?usp=sharing}"
+
 if [ -z "${SKIP_DATASET:-}" ] && [ ! -d "datasets/linemod/Linemod_preprocessed" ]; then
-    mkdir -p datasets/linemod
-    if [ ! -s "datasets/linemod/Linemod_preprocessed.zip" ]; then
-        log "downloading LineMod (~9 GB) via gdown..."
-        pip install --quiet --upgrade gdown
-        gdown "1qQ8ZjUI6QauzFsiF8EpaaI2nKFWna_kQ" -O datasets/linemod/Linemod_preprocessed.zip
-    else
-        log "zip already present ($(stat -c %s datasets/linemod/Linemod_preprocessed.zip 2>/dev/null || echo ?) bytes), skipping download."
+    if [[ "$AML_BUNDLE_URL" == *"<FOLDER_ID>"* ]]; then
+        log "ERROR: AML_BUNDLE_URL non configurato. Esporta la variabile o modifica setup_runpod.sh."
+        exit 1
     fi
-    log "extracting..."
-    if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o datasets/linemod/Linemod_preprocessed.zip -d datasets/linemod/
+    pip install --quiet --upgrade gdown
+    STAGING_DIR=".aml_bundle_staging"
+    rm -rf "$STAGING_DIR" && mkdir -p "$STAGING_DIR"
+    log "downloading team Drive bundle (~9 GB dataset + ~0.5 GB weights)..."
+    gdown --folder --remaining-ok "$AML_BUNDLE_URL" -O "$STAGING_DIR"
+
+    BUNDLE_ROOT="$(find "$STAGING_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    [ -n "$BUNDLE_ROOT" ] || { log "Bundle download failed (no dir in $STAGING_DIR)."; exit 1; }
+
+    DATASET_ZIP="$BUNDLE_ROOT/datasets/linemod/Linemod_preprocessed.zip"
+    if [ -f "$DATASET_ZIP" ]; then
+        mkdir -p datasets/linemod
+        log "extracting dataset..."
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -q -o "$DATASET_ZIP" -d datasets/linemod/
+        else
+            log "unzip not available, falling back to python zipfile..."
+            python -m zipfile -e "$DATASET_ZIP" datasets/linemod/
+        fi
     else
-        log "unzip not available, falling back to python zipfile..."
-        python -m zipfile -e datasets/linemod/Linemod_preprocessed.zip datasets/linemod/
+        log "WARN: $DATASET_ZIP non presente nel bundle, skip dataset."
     fi
-    rm -f datasets/linemod/Linemod_preprocessed.zip
+
+    if [ -d "$BUNDLE_ROOT/weights" ]; then
+        mkdir -p weights
+        cp -R "$BUNDLE_ROOT/weights/." weights/
+        log "weights copied to weights/:"
+        find weights -type f \( -name "*.pth" -o -name "*.pt" \) | tee -a "$PIPELINE_LOG"
+    fi
+
+    rm -rf "$STAGING_DIR"
 else
     log "dataset dir present, skipping download/extract."
 fi

@@ -1,5 +1,6 @@
 import os
 import random
+import argparse
 import cv2
 import numpy as np
 import torch
@@ -108,9 +109,20 @@ def project_model_points(img, R, T, K, points_3d, color=(255, 255, 0)):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Visualize Phase 4 Extension predictions.")
+    parser.add_argument("--save-dir", type=str, default=None,
+                        help="If set, save annotated frames as PNG to this directory.")
+    parser.add_argument("--max-samples", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"
     YOLO_PATH = "weights/yolo/best.pt"
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
+    if args.save_dir:
+        os.makedirs(args.save_dir, exist_ok=True)
+        print(f"Save mode: writing PNG frames to {args.save_dir}")
 
     print("Loading RGBD custom model...")
     pose_model = FusionResNetCustom().to(DEVICE)
@@ -276,11 +288,20 @@ def main():
                 cv2.putText(vis_img, line, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
 
             comparison = np.hstack((vis_img.copy(), vis_points))
-            cv2.imshow("Left: Box | Right: Point Cloud", comparison)
-            if cv2.waitKey(0) & 0xFF == ord('q'):
-                break
+            if args.save_dir:
+                out_name = f"obj{obj_id:02d}_sample{sample_id:04d}_add{add_error:05.2f}mm.png"
+                cv2.imwrite(os.path.join(args.save_dir, out_name), comparison)
+                if args.max_samples is not None:
+                    args.max_samples -= 1
+                    if args.max_samples <= 0:
+                        break
+            else:
+                cv2.imshow("Left: Box | Right: Point Cloud", comparison)
+                if cv2.waitKey(0) & 0xFF == ord('q'):
+                    break
 
-    cv2.destroyAllWindows()
+    if not args.save_dir:
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

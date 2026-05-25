@@ -1,68 +1,109 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Download dataset + model weights from the team's public Google Drive folder.
+#
+# Il bundle è una folder Drive pubblica (read-only) gestita dal team, con
+# questa struttura interna:
+#
+#   AML_release/
+#   ├── datasets/
+#   │   └── linemod/
+#   │       └── Linemod_preprocessed.zip
+#   └── weights/
+#       ├── baseline/pose_resnet50_baseline_best.pth
+#       ├── fusion_ext/5layer_cnn/pose_rgbd_custom_1ch_best.pth
+#       ├── fusion_ext/resnet10/pose_rgbd_custom_1ch_best.pth
+#       ├── fusion_main/pose_rgbd_fusion_best.pth
+#       └── yolo/best.pt
+#
+# Override the URL via env if you fork the bundle:
+#   export AML_BUNDLE_URL="https://drive.google.com/drive/folders/<your-id>"
+#
 
-# Interrompi se c'è un errore
-set -e
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# CONFIG — sostituire <FOLDER_ID> con l'ID della cartella Drive del team.
+# ---------------------------------------------------------------------------
+AML_BUNDLE_URL="${AML_BUNDLE_URL:-https://drive.google.com/drive/folders/<FOLDER_ID>?usp=sharing}"
+
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$PROJECT_ROOT"
 
 echo "============================================="
-echo "   SETUP PIPELINE: LINEMOD, YOLO & WEIGHTS"
+echo "   SETUP PIPELINE: LINEMOD + WEIGHTS"
 echo "============================================="
 
-# 0. Verifica preliminare
+# 0. Verifica preliminare ----------------------------------------------------
 if [ ! -f "phase2_detection/prepare_yolo_data.py" ]; then
     echo "❌ ERRORE: Non trovo 'phase2_detection/prepare_yolo_data.py'!"
     exit 1
 fi
 
-# 1. Crea la cartella per i datasets
-echo "📂 [1/6] Creazione cartella datasets/linemod..."
-mkdir -p datasets/linemod
-
-# 2. Scarica i dati del dataset
-echo "⬇️  [2/6] Scaricamento dataset..."
-if [ ! -f "datasets/linemod/Linemod_preprocessed.zip" ]; then
-    gdown --fuzzy "https://drive.google.com/file/d/1qQ8ZjUI6QauzFsiF8EpaaI2nKFWna_kQ/view?usp=sharing" -O datasets/linemod/Linemod_preprocessed.zip
-else
-    echo "   Archivio dataset già presente, salto."
+if [[ "$AML_BUNDLE_URL" == *"<FOLDER_ID>"* ]]; then
+    echo "❌ ERRORE: AML_BUNDLE_URL non configurato."
+    echo "   Modifica la variabile in cima a $(basename "$0") oppure esporta:"
+    echo "     export AML_BUNDLE_URL=\"https://drive.google.com/drive/folders/<id>?usp=sharing\""
+    exit 1
 fi
 
-# 3. Estrazione Dataset
-echo "📦 [3/6] Estrazione archivio..."
-unzip -q -o datasets/linemod/Linemod_preprocessed.zip -d datasets/linemod/
+# 1. Assicura gdown aggiornato ----------------------------------------------
+echo "🐍 [1/5] Verifica gdown..."
+if ! command -v gdown >/dev/null 2>&1; then
+    echo "   gdown non trovato, installo..."
+    pip install --quiet --upgrade gdown
+else
+    pip install --quiet --upgrade gdown >/dev/null 2>&1 || true
+fi
 
-# 4. Pulizia Dataset
-echo "🧹 [4/6] Rimozione file zip temporaneo..."
-rm -f datasets/linemod/Linemod_preprocessed.zip
+# 2. Download dell'intera folder Drive --------------------------------------
+STAGING_DIR=".aml_bundle_staging"
+rm -rf "$STAGING_DIR"
+mkdir -p "$STAGING_DIR"
 
-# 5. Download dei Pesi (Weights)
-echo "🏋️  [5/6] Scaricamento pesi dei modelli..."
+echo "⬇️  [2/5] Download cartella Drive (dataset + pesi)..."
+echo "   URL: $AML_BUNDLE_URL"
+gdown --folder --remaining-ok "$AML_BUNDLE_URL" -O "$STAGING_DIR"
 
-# Definiamo i percorsi delle cartelle pesi
-WEIGHTS_ROOT="weights"
-mkdir -p "$WEIGHTS_ROOT/fusion_ext/5layer_cnn" \
-         "$WEIGHTS_ROOT/fusion_ext/resnet10" \
-         "$WEIGHTS_ROOT/fusion_main" \
-         "$WEIGHTS_ROOT/baseline" \
-         "$WEIGHTS_ROOT/yolo"
+# gdown --folder crea STAGING_DIR/<nome_cartella_drive>/... — risali a quello.
+BUNDLE_ROOT="$(find "$STAGING_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+if [ -z "$BUNDLE_ROOT" ]; then
+    echo "❌ Download fallito: nessuna sotto-cartella in $STAGING_DIR."
+    exit 1
+fi
+echo "   Bundle scaricato in: $BUNDLE_ROOT"
 
-echo "   -> Scaricamento pesi in corso..."
+# 3. Estrazione dataset ------------------------------------------------------
+DATASET_ZIP="$BUNDLE_ROOT/datasets/linemod/Linemod_preprocessed.zip"
+echo "📦 [3/5] Estrazione dataset LineMod..."
+if [ -f "$DATASET_ZIP" ]; then
+    mkdir -p datasets/linemod
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$DATASET_ZIP" -d datasets/linemod/
+    else
+        echo "   unzip non disponibile, uso python zipfile..."
+        python -m zipfile -e "$DATASET_ZIP" datasets/linemod/
+    fi
+    echo "   ✓ Estratto in datasets/linemod/"
+else
+    echo "   ⚠️  $DATASET_ZIP non trovato nella folder Drive — skip dataset."
+fi
 
-# 1. Pesi 5-layer CNN (archived, alternative backbone)
-gdown --fuzzy "https://drive.google.com/file/d/1oMGwPRnoMcQx5kUbokZaxkA1cNOybp2u/view?usp=drive_link" -O "$WEIGHTS_ROOT/fusion_ext/5layer_cnn/pose_rgbd_custom_1ch_best.pth" || echo "⚠️  Fallito download CNN"
+# 4. Copia weights nel layout del progetto ----------------------------------
+echo "🏋️  [4/5] Installazione pesi modelli..."
+if [ -d "$BUNDLE_ROOT/weights" ]; then
+    mkdir -p weights
+    # cp -R src/. dst/  copia il CONTENUTO di src dentro dst (no nesting extra)
+    cp -R "$BUNDLE_ROOT/weights/." weights/
+    echo "   ✓ Pesi copiati in weights/:"
+    find weights -type f \( -name "*.pth" -o -name "*.pt" \) | sed 's/^/     /'
+else
+    echo "   ⚠️  $BUNDLE_ROOT/weights non trovato — skip pesi."
+fi
 
-# 2. Pesi custom ResNet-10 (phase4_fusion/extension)
-gdown --fuzzy "https://drive.google.com/file/d/1rBXKMibpuEOz3eX1uIJcWiItgY-lbx1N/view?usp=drive_link" -O "$WEIGHTS_ROOT/fusion_ext/resnet10/pose_rgbd_custom_1ch_best.pth" || echo "⚠️  Fallito download Resnet10"
-
-# 3. Pesi ResNet50+ResNet18 (phase4_fusion/main)
-gdown --fuzzy "https://drive.google.com/file/d/1K2uOzuRh4HCnHc0pHMGryWBRcXgQMRXZ/view?usp=drive_link" -O "$WEIGHTS_ROOT/fusion_main/pose_rgbd_fusion_best.pth" || echo "⚠️  Fallito download Resnet50/18"
-
-# 4. Pesi baseline
-gdown --fuzzy "https://drive.google.com/file/d/1dvU2vq0fWRbVnVBO0RfM_IEXhQUXLXQE/view?usp=drive_link" -O "$WEIGHTS_ROOT/baseline/pose_resnet50_baseline_best.pth" || echo "⚠️  Fallito download Baseline"
-
-# 5. Pesi Yolo
-gdown --fuzzy "https://drive.google.com/file/d/1TWGOZI667ZZIYBzRVLM7Ma02KlGy9JCR/view?usp=drive_link" -O "$WEIGHTS_ROOT/yolo/best.pt" || echo "⚠️  Fallito download YOLO"
-
-# 6. Esecuzione Script Python
-echo "⚙️  [6/6] Esecuzione phase2_detection/prepare_yolo_data.py..."
+# 5. Pulizia + prepare YOLO data --------------------------------------------
+echo "🧹 [5/5] Cleanup staging + prepare YOLO data..."
+rm -rf "$STAGING_DIR"
 python phase2_detection/prepare_yolo_data.py
 
 echo "============================================="

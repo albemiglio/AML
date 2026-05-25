@@ -3,3 +3,15 @@
 % ===================================================================
 \section{Conclusion}
 \label{sec:conclusion}
+
+In this paper, we proposed and thoroughly evaluated a modular, phase-oriented pipeline for 6D object pose estimation on the LineMod benchmark~\cite{hinterstoisser2012model}. Our analysis shows that, while a ResNet-50 backbone is capable of learning 3D rotations from monocular RGB inputs alone, it suffers catastrophic failure on the translation component due to the inherent ambiguity of projective geometry: the accuracy collapses from 92.9\% (with ground-truth translation) to 1.8\% (with regressed translation), and the pinhole approximation never exceeds 9.4\%. By integrating depth data through a lightweight Global Fusion architecture and enforcing the $\SO$ structural constraint via the 6D continuous rotation representation of Zhou~\etal~\cite{zhou2019continuity}, we recover a 98.4\% ADD accuracy with a Main variant of $\sim$36M parameters, a $\sim$55$\times$ improvement over the RGB-only baseline. The project corroborates the role of proper mathematical representations and well-balanced multi-modal fusion in modern pose estimation pipelines.
+
+\paragraph{Limitations and Future Work}
+While the proposed pipeline is accurate and computationally lightweight, we identify three theoretical limitations:
+\begin{enumerate}
+    \item \textbf{Aspect-ratio distortion.} The current preprocessing uses a square crop with side $\max(w,h)$ followed by direct resize to $224{\times}224$. A square \emph{padding} of the original crop would be mathematically superior, as it preserves the object's aspect ratio and avoids non-isotropic resampling artifacts that perturb the rotation features.
+    \item \textbf{The horizontal-flip paradox.} Standard data-augmentation flipping must be disabled in end-to-end 6D pose pipelines: a horizontal mirror of the image corresponds to a non-trivial $\SO$ transformation of the ground-truth pose, and naively flipping the image without re-transforming the label produces an inconsistent supervision signal.
+    \item \textbf{Global vs.\ dense fusion.} Our Global Fusion trades pixel-wise spatial alignment for computational efficiency, theoretically reducing resilience against severe occlusions. A natural extension is a sparse-dense hybrid that retains the cheap global pathway while attaching a local per-pixel branch on detected RoIs.
+\end{enumerate}
+
+Addressing the first two points would tighten the upper bound of monocular performance, while the third opens a path toward a competitive lightweight alternative to fully dense approaches such as DenseFusion~\cite{wang2019densefusion}.

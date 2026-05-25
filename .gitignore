@@ -189,3 +189,13 @@ pose_rgbd_fusion_best.pth
 old_train/
 
 runs/
+
+# Bundle / staging cartelle per release Drive
+bundle_to_upload/
+.aml_bundle_staging/
+
+# CVPR template boilerplate non usato dal nostro paper
+report/_local_backup/
+report/sec/
+report/rebuttal.tex
+report/README.md

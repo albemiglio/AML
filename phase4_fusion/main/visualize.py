@@ -4,6 +4,7 @@ import cv2
 import os
 import yaml
 import random
+import argparse
 import trimesh
 from ultralytics import YOLO
 
@@ -55,10 +56,24 @@ def project_3d_box(img, R, T, K, obj_info, color=(0, 255, 0), thickness=2):
     return img
 
 def main():
+    parser = argparse.ArgumentParser(description="Visualize Phase 4 RGB-D Fusion predictions.")
+    parser.add_argument("--save-dir", type=str, default=None,
+                        help="If set, save annotated frames as PNG to this directory "
+                             "(no interactive window).")
+    parser.add_argument("--max-samples", type=int, default=None,
+                        help="Stop after this many samples (default: process all).")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for sample shuffling (for reproducible figure picks).")
+    args = parser.parse_args()
+
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"
     RGBD_MODEL_PATH = "weights/fusion_main/pose_rgbd_fusion_best.pth"
     YOLO_PATH = 'weights/yolo/best.pt'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
+    if args.save_dir:
+        os.makedirs(args.save_dir, exist_ok=True)
+        print(f"Save mode: writing PNG frames to {args.save_dir}")
 
     print("Loading models...")
     yolo_model = YOLO(YOLO_PATH)
@@ -82,13 +97,16 @@ def main():
             print(f"Warning: PLY file missing for obj {oid:02d} ({ply_path}).")
 
     window_name = "Green=GT, Red=Pred (YOLO+RGBD Fusion)"
-    print("Pipeline ready. Press 'q' to exit.")
+    print("Pipeline ready. Press 'q' to exit." if not args.save_dir else "Pipeline ready.")
 
+    saved_count = 0
     with torch.no_grad():
         indices = list(range(len(test_dataset)))
-        random.shuffle(indices)
+        random.Random(args.seed).shuffle(indices)
 
         for idx in indices:
+            if args.max_samples is not None and saved_count >= args.max_samples:
+                break
             sample = test_dataset[idx]
             obj_id = int(sample["obj_id"])
             sample_id = int(sample["sample_id"])
@@ -181,14 +199,25 @@ def main():
                 cv2.putText(vis_img, line, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
                 cv2.putText(vis_img, line, (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
 
-            cv2.imshow(window_name, vis_img)
-            try:
-                cv2.setWindowTitle(window_name, f"{window_name} | {error_summary}")
-            except (cv2.error, AttributeError):
-                pass
-            if cv2.waitKey(0) & 0xFF == ord('q'): break
+            if args.save_dir:
+                out_name = f"obj{obj_id:02d}_sample{sample_id:04d}_add{add_error:05.2f}mm.png"
+                out_path = os.path.join(args.save_dir, out_name)
+                cv2.imwrite(out_path, vis_img)
+                saved_count += 1
+                if saved_count % 10 == 0:
+                    print(f"  saved {saved_count} frames so far...")
+            else:
+                cv2.imshow(window_name, vis_img)
+                try:
+                    cv2.setWindowTitle(window_name, f"{window_name} | {error_summary}")
+                except (cv2.error, AttributeError):
+                    pass
+                if cv2.waitKey(0) & 0xFF == ord('q'): break
 
-    cv2.destroyAllWindows()
+    if args.save_dir:
+        print(f"Done. Saved {saved_count} frames to {args.save_dir}/")
+    else:
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
