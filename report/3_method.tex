@@ -6,59 +6,7 @@
 
 Our proposed pipeline is divided into three consecutive phases: 2D Object Detection, RGB-only Baseline Pose Estimation, and RGB-D Global Fusion. Each phase builds upon the previous one, incrementally addressing the challenges of the 6D pose estimation task. The overall architecture is summarized in Figure~\ref{fig:pipeline}.
 
-\begin{figure*}[t]
-    \centering
-    \resizebox{\textwidth}{!}{%
-    \begin{tikzpicture}[
-        font=\small, node distance=4mm and 6mm,
-        block/.style={rectangle, draw=cvprblue, thick, rounded corners=2pt,
-                      align=center, minimum height=8mm, minimum width=22mm, fill=cvprblue!8},
-        input/.style={rectangle, draw=black!60, thick, rounded corners=2pt,
-                      align=center, minimum height=8mm, minimum width=18mm, fill=black!5},
-        phase/.style={rectangle, draw=black!30, dashed, rounded corners=4pt, inner sep=4mm},
-        arrow/.style={-{Latex[length=2mm]}, thick, draw=black!70},
-        label/.style={font=\footnotesize\itshape, text=black!70}]
-    \node[input] (rgb) {RGB image \\ \scriptsize $640{\times}480{\times}3$};
-    \node[input, below=2mm of rgb] (depth) {Depth map \\ \scriptsize $640{\times}480$};
-    \node[block, right=8mm of rgb] (yolo) {YOLO11n \\ \scriptsize detector};
-    \node[block, right=8mm of yolo, fill=black!5, draw=black!40] (crop) {Square crop \\ \scriptsize $\!\to 224{\times}224$};
-    \draw[arrow] (rgb) -- (yolo);
-    \draw[arrow] (yolo) -- node[above,label]{bbox} (crop);
-    \draw[arrow] (depth.east) -| ($(crop.south)+(0,-4mm)$) -- (crop.south);
-    \node[block, right=12mm of crop, yshift=7mm] (r50a) {ResNet-50 \\ \scriptsize (RGB)};
-    \node[block, right=6mm of r50a, yshift=4mm, minimum width=18mm] (quat) {\texttt{quat\_head} \\ \scriptsize $2048\!\to\!4$};
-    \node[block, right=6mm of r50a, yshift=-4mm, minimum width=18mm] (tvec) {\texttt{tvec\_head} \\ \scriptsize $2048\!\to\!3$};
-    \draw[arrow] (r50a.east) -- (quat.west);
-    \draw[arrow] (r50a.east) -- (tvec.west);
-    \node[block, right=12mm of crop, yshift=-12mm] (r50b) {ResNet-50 \\ \scriptsize (RGB)};
-    \node[block, below=2mm of r50b] (r18) {ResNet-18 \\ \scriptsize (Depth, 3ch)};
-    \node[block, below=2mm of r18, minimum width=22mm] (meta) {Meta-MLP \\ \scriptsize $8\!\to\!64$};
-    \node[block, right=6mm of r18, fill=cvprblue!18] (cat) {Concat \\ \scriptsize $2624$D};
-    \node[block, right=4mm of cat] (mlp) {MLP \\ \scriptsize $2624\!\to\!256$};
-    \node[block, right=6mm of mlp, yshift=4mm, fill=cvprblue!18, minimum width=18mm] (r6d) {R-head (6D) \\ \scriptsize $\!\to\!\SO$};
-    \node[block, right=6mm of mlp, yshift=-4mm, fill=cvprblue!18, minimum width=18mm] (t6d) {T-head \\ \scriptsize $\!\to\!\R^3$};
-    \draw[arrow] (r50b.east) -- (cat.west);
-    \draw[arrow] (r18.east) -- (cat.west);
-    \draw[arrow] (meta.east) -- (cat.west);
-    \draw[arrow] (cat) -- (mlp);
-    \draw[arrow] (mlp.east) -- (r6d.west);
-    \draw[arrow] (mlp.east) -- (t6d.west);
-    \draw[arrow] (crop.east) -- ($(crop.east)+(6mm,0)$) |- (r50a.west);
-    \draw[arrow] (crop.east) -- ($(crop.east)+(6mm,0)$) |- (r50b.west);
-    \draw[arrow] (crop.east) -- ($(crop.east)+(6mm,0)$) |- (r18.west);
-    \node[input, right=12mm of mlp, yshift=-20mm, fill=cvprblue!5, draw=cvprblue!60] (out) {6D Pose \\ \scriptsize $(\bR,\bt)\in SE(3)$};
-    \draw[arrow] (tvec.east) -| (out.north);
-    \draw[arrow] (t6d.east) -| (out.north);
-    \begin{scope}[on background layer]
-        \node[phase, fit=(yolo)(crop), label={[label]above:Phase 2 -- 2D Detection}] {};
-        \node[phase, fit=(r50a)(quat)(tvec), label={[label]above:Phase 3 -- RGB-only Baseline}] {};
-        \node[phase, fit=(r50b)(meta)(mlp)(r6d)(t6d), label={[label]below:Phase 4 -- RGB-D Global Fusion}] {};
-    \end{scope}
-    \end{tikzpicture}%
-    }
-    \caption{Overview of the proposed three-phase pipeline. Phase~2 detects the target object and produces a tight bounding box. The cropped patch is then consumed either by the Phase~3 RGB-only baseline (ResNet-50 with quaternion and translation heads) or by the Phase~4 RGB-D Global Fusion network, which fuses an RGB ResNet-50, a depth ResNet-18 (channel-replicated input), and an 8D camera/bbox meta-MLP into a 2624D vector projected by an MLP to a 256D latent and decoded into a $\SO$ rotation (6D continuous representation) and a translation vector.}
-    \label{fig:pipeline}
-\end{figure*}
+
 
 % ------------------------------------------------------------------
 \subsection{2D Object Detection}
@@ -152,9 +100,9 @@ Second, ImageNet pre-training transfers generic mid-level features (edges, blobs
 \paragraph{Depth Branch}
 The second extractor operates on the cropped and pre-processed depth map.
 Because standard pre-trained CNNs expect a 3-channel input, we replicate the single-channel depth map across all three channels before passing it through a ResNet-18~\cite{he2016deep} backbone (\emph{Main} variant), yielding a 512D global average pooling vector $\mathbf{f}_{\text{depth}} \in \R^{512}$.
-This channel-replication trick allows the use of ImageNet weights even for a fundamentally different modality, enabling the network to leverage pre-trained low-level filters (Sobel-like edge detectors) that naturally capture depth discontinuities and surface normal information encoded as intensity gradients in the depth image.
+This channel-replication trick allows the use of ImageNet weights even for a fundamentally different modality, enabling the network to leverage pre-trained low-level filters (edge detectors) that naturally capture depth discontinuities and surface normal information encoded as intensity gradients in the depth image.
 Compared to a point-cloud-based branch (e.g., PointNet as in DenseFusion), a 2D CNN on the aligned depth crop is computationally lighter and architecturally uniform with the RGB branch, simplifying the fusion pipeline.
-In the \emph{Extension} variant, we replace ResNet-18 with a custom single-channel ResNet-like backbone consisting of four residual blocks trained from scratch, preserving the original single-channel input and avoiding any domain mismatch introduced by channel replication.
+
 
 \paragraph{Meta-Branch}
 The third branch addresses a subtle but practically important limitation of pure appearance-based pose estimation: the projected size and position of an object in the image encode strong geometric priors about its absolute depth and in-plane location that are difficult to recover solely from convolutional features.
