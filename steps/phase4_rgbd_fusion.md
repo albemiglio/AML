@@ -11,7 +11,7 @@
 
 ## Architettura
 
-Tre varianti di modello, tutte con lo stesso schema fondamentale:
+Il modello condivide il seguente schema fondamentale:
 
 ```
 RGB (224×224×3)  →  RGB backbone   → f_rgb  (2048D)  ┐
@@ -22,13 +22,7 @@ meta_info (8D)   →  meta_encoder   → f_meta  (64D)   ┘
                                                             (B,3)          (B,3,3) ← SO(3)
 ```
 
-### Varianti
 
-| File | RGB branch | Depth branch | Depth input |
-|---|---|---|---|
-| `phase4_fusion/main/model.py` | ResNet-50 ImageNet | ResNet-18 ImageNet | 3ch (replicated) |
-| `phase4_fusion/extension/model.py` | ResNet-50 ImageNet | custom ResNet-10 | 1ch |
-| `archive/RGBD_FusionPredictor_custom_5layer_cnn.py` | ResNet-50 ImageNet | custom 5-layer CNN | 1ch (archived) |
 
 ### Meta-branch
 
@@ -76,12 +70,7 @@ def convert_depth_to_meters(depth_raw, depth_scale):
 - LineMod: oggetti a 0.3–0.7 m, sfondo a < 2 m → [0, 3] copre tutto il range utile
 - Clip non tocca pixel validi, elimina solo valori fuori range
 
-### Input depth per variante
 
-| Variante | Branch depth | Formato input |
-|---|---|---|
-| `phase4_fusion/main/model.py` | ResNet-18 3ch | depth replicata 3× (`prepare_depth_tensor`) |
-| `phase4_fusion/extension/model.py` | custom ResNet-10 1ch | depth 1ch (`prepare_depth_tensor_custom`) |
 
 ---
 
@@ -107,11 +96,7 @@ Identiche a Phase 3: ADD / ADD-S con soglia 10% diametro, via `common/pose_metri
 
 Tutti e tre gli evaluator (`phase4_fusion/main/evaluate.py`, `phase4_fusion/extension/evaluate.py`, `phase3_baseline/evaluate.py`) importano ora da `common.pose_metrics` — nessuna duplicazione.
 
-### Uniformità del crop (fix Phase 4)
 
-Problema pre-esistente: `evaluate_metricsRGBD_custom.py` usava GT bbox (`ann['obj_bb']`) mentre `evaluate_metricsRGBD.py` usava YOLO bbox. Il confronto tra modelli era iniquo (GT crop più pulito → metriche artificicialmente migliori per il custom).
-
-**Fix:** `evaluate_metricsRGBD_custom.py` ora usa YOLO detection, allineato a `evaluate_metricsRGBD.py`.
 
 ---
 
@@ -122,7 +107,6 @@ Problema pre-esistente: `evaluate_metricsRGBD_custom.py` usava GT bbox (`ann['ob
 | Script | Modello |
 |---|---|
 | `phase4_fusion/main/train.py` | `RGBD_FusionPredictor` (ResNet-50 + ResNet-18) |
-| `phase4_fusion/extension/train.py` | `FusionResNetCustom` (ResNet-50 + ResNet-10) |
 
 ### Hyperparameters
 
@@ -151,7 +135,6 @@ Problema pre-esistente: `evaluate_metricsRGBD_custom.py` usava GT bbox (`ann['ob
 
 ```bash
 python -m phase4_fusion.main.evaluate       # ResNet-50 + ResNet-18
-python -m phase4_fusion.extension.evaluate  # ResNet-50 + custom ResNet-10
 ```
 
 Entrambi producono una tabella con ADD medio (mm) e Accuracy (%) per classe. Gli oggetti simmetrici (eggbox*, glue*) usano ADD-S.
@@ -163,14 +146,10 @@ Dopo 100 epoche di addestramento su GPU, l'introduzione della profondità ha com
 | Modello | Accuracy (ADD < 10% d) | Range Errore Medio (mm) |
 |---|---|---|
 | **MAIN** (ResNet-18) | **98.4%** | 3.66 – 8.70 mm |
-| **EXT** (ResNet-1ch) | **95.8%** | 5.13 – 10.15 mm |
-
-**Dettaglio classi (Extension):**
-`ape`: 7.88 mm | `benchvise`: 8.91 mm | `camera`: 7.60 mm | `can`: 7.63 mm | `cat`: 6.96 mm | `driller`: 9.79 mm | `duck`: 7.88 mm | `eggbox*`: 5.13 mm | `glue*`: 5.45 mm | `holepuncher`: 7.01 mm | `iron`: 10.15 mm | `lamp`: 9.08 mm | `phone`: 8.88 mm.
 
 **Analisi:** 
-- Entrambi i modelli superano agilmente il 95% di accuratezza globale per la stima della posa 6D completa.
-- La variante `MAIN` (con ResNet-18 ImageNet) ha superato la variante `EXT` (con ResNet-10 custom). Questo suggerisce che i pesi pre-addestrati su ImageNet (usati nel Main copiando la depth su 3 canali) compensano e superano il vantaggio teorico di avere un'architettura nativa a 1 canale addestrata da zero (come nell'Extension).
+- Il modello supera agilmente il 95% di accuratezza globale per la stima della posa 6D completa.
+- I pesi pre-addestrati su ImageNet (usati nel Main copiando la depth su 3 canali) compensano enormemente la mancanza di feature visive nella depth map.
 
 ---
 

@@ -129,9 +129,8 @@ The introduction of Depth data and the 6D continuous representation in Phase 4 r
 | Model Variant | Backbone (RGB/Depth) | Accuracy (ADD < 10% d) | Avg. Error (mm) |
 |:---|:---|:---:|:---:|
 | **MAIN** | ResNet-50 / ResNet-18 | **98.4%** | 3.66 – 8.70 |
-| **EXTENSION** | ResNet-50 / ResNet-10 (Custom) | 95.8% | 5.13 – 10.15 |
 
-The *Main* variant, utilizing a pre-trained ResNet-18 for the depth branch, outperformed the custom *Extension* model, suggesting that transfer learning benefits even the depth modality when properly adapted.
+The *Main* variant, utilizing a pre-trained ResNet-18 for the depth branch, suggests that transfer learning benefits even the depth modality when properly adapted.
 
 ---
 
