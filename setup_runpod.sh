@@ -163,11 +163,9 @@ log "=== 4/5: GPU sanity ==="
 python -c "import torch; print('CUDA:', torch.cuda.is_available(), '| GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU only', '| bf16:', torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False)" | tee -a "$PIPELINE_LOG"
 
 # ---------- 5. Pipeline: train + eval for both variants ----------
-mkdir -p results_4_main results_4_ext
+mkdir -p results_4_main
 MAIN_TRAIN_LOG="$PROJECT_ROOT/results_4_main/pipeline_train.log"
 MAIN_EVAL_LOG="$PROJECT_ROOT/results_4_main/pipeline_eval.log"
-EXT_TRAIN_LOG="$PROJECT_ROOT/results_4_ext/pipeline_train.log"
-EXT_EVAL_LOG="$PROJECT_ROOT/results_4_ext/pipeline_eval.log"
 
 run_step() {
     local name="$1" module="$2" logfile="$3"
@@ -187,15 +185,9 @@ log "=== 5/5: pipeline (NUM_WORKERS=$NUM_WORKERS) ==="
 if run_step "phase4 MAIN train" "phase4_fusion.main.train" "$MAIN_TRAIN_LOG"; then
     run_step "phase4 MAIN eval"  "phase4_fusion.main.evaluate" "$MAIN_EVAL_LOG" || log "MAIN eval failed (continuing)"
 else
-    log "MAIN train failed — skipping MAIN eval, going to EXT."
-fi
-
-if run_step "phase4 EXT train" "phase4_fusion.extension.train" "$EXT_TRAIN_LOG"; then
-    run_step "phase4 EXT eval"  "phase4_fusion.extension.evaluate" "$EXT_EVAL_LOG" || log "EXT eval failed"
-else
-    log "EXT train failed."
+    log "MAIN train failed — skipping MAIN eval."
 fi
 
 log "=== Pipeline finished. ==="
-log "Results in: results_4_main/ and results_4_ext/"
+log "Results in: results_4_main/"
 log "Download with:  runpodctl receive <pod-id>:/workspace/AML/results_4_main"

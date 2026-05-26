@@ -1,6 +1,6 @@
 # AML — 6D Pose Estimation on LineMod
 
-RGB-D 6-DoF object pose estimation pipeline: YOLO detection → pose regression via ResNet-50 backbone (+ depth branch for RGB-D variants).
+RGB-D 6-DoF object pose estimation pipeline: YOLO detection → pose regression via ResNet-50 backbone (+ depth branch for RGB-D variant).
 
 ## Project layout
 
@@ -25,25 +25,15 @@ AML/
 │   ├── evaluate.py                  # 4-mode evaluation (GT/YOLO crop x GT/pred T)
 │   └── visualize.py                 # interactive per-sample visualizer
 │
-├── phase4_fusion/                   # Phase 4 — RGB-D fusion
-│   ├── main/                        # ResNet-50 + ResNet-18 backbone
-│   │   ├── model.py                 # RGBD_FusionPredictor
-│   │   ├── dataset.py               # LineModDatasetRGBD (depth 3-ch replicated)
-│   │   ├── rgbd_utils.py            # depth preprocessing + crop utilities
-│   │   ├── add_loss.py              # ADDLoss
-│   │   ├── train.py
-│   │   ├── evaluate.py
-│   │   └── visualize.py
-│   └── extension/                   # ResNet-50 + custom ResNet-10 (1-ch depth)
-│       ├── model.py                 # FusionResNetCustom
-│       ├── dataset.py               # LineModDatasetRGBD_custom (depth 1-ch)
-│       ├── rgbd_utils.py            # depth preprocessing for 1-ch branch
+├── phase4_fusion/                   # Phase 4 — RGB-D Global Fusion
+│   └── main/                        # ResNet-50 (RGB) + ResNet-18 (Depth, 3-ch replicated)
+│       ├── model.py                 # RGBD_FusionPredictor
+│       ├── dataset.py               # LineModDatasetRGBD (depth 3-ch replicated)
+│       ├── rgbd_utils.py            # depth preprocessing + crop utilities
+│       ├── add_loss.py              # ADDLoss
 │       ├── train.py
 │       ├── evaluate.py
 │       └── visualize.py
-│
-├── archive/                         # historical code, not part of active pipeline
-│   └── RGBD_FusionPredictor_custom_5layer_cnn.py  # abandoned 5-layer CNN depth branch
 │
 ├── requirements/                    # project brief and recap
 │   ├── project6.md
@@ -62,10 +52,7 @@ AML/
 ├── weights/                         # gitignored — download with script below
 │   ├── yolo/best.pt
 │   ├── baseline/pose_resnet50_baseline_best.pth
-│   ├── fusion_main/pose_rgbd_fusion_best.pth
-│   └── fusion_ext/
-│       ├── resnet10/pose_rgbd_custom_1ch_best.pth
-│       └── 5layer_cnn/pose_rgbd_custom_1ch_best.pth
+│   └── fusion_main/pose_rgbd_fusion_best.pth
 │
 ├── download_data_and_weights.sh
 └── requirements.txt
@@ -120,20 +107,12 @@ python -m phase3_baseline.evaluate
 python -m phase3_baseline.visualize
 ```
 
-### Phase 4 — RGB-D Fusion (main: ResNet-50 + ResNet-18)
+### Phase 4 — RGB-D Global Fusion (ResNet-50 + ResNet-18)
 
 ```bash
 python -m phase4_fusion.main.train
 python -m phase4_fusion.main.evaluate
 python -m phase4_fusion.main.visualize
-```
-
-### Phase 4 — RGB-D Fusion (extension: ResNet-50 + custom ResNet-10)
-
-```bash
-python -m phase4_fusion.extension.train
-python -m phase4_fusion.extension.evaluate
-python -m phase4_fusion.extension.visualize
 ```
 
 ## Device selection

@@ -11,8 +11,6 @@
 #   │       └── Linemod_preprocessed.zip
 #   └── weights/
 #       ├── baseline/pose_resnet50_baseline_best.pth
-#       ├── fusion_ext/5layer_cnn/pose_rgbd_custom_1ch_best.pth
-#       ├── fusion_ext/resnet10/pose_rgbd_custom_1ch_best.pth
 #       ├── fusion_main/pose_rgbd_fusion_best.pth
 #       └── yolo/best.pt
 #

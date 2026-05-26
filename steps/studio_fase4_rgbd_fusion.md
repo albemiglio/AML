@@ -10,25 +10,22 @@ Per risolvere questo problema, dobbiamo fornire alla rete il senso della profond
 
 ---
 
-## 2. Le Due Varianti del Modello
-Se guardi la cartella `phase4_fusion`, noterai che ci sono due sottocartelle: `main` ed `extension`. Questo perché abbiamo sviluppato due soluzioni diverse per trattare i dati di profondità.
+## 2. L'Architettura: Il Modello `main`
 
-### Variante A: `main` (Approccio Standard)
-Usa una **ResNet-18** pre-addestrata per analizzare la profondità.
+La cartella `phase4_fusion/main` contiene l'unica e definitiva variante del modello.
+
+Usa una **ResNet-18** pre-addestrata su ImageNet per analizzare la profondità.
 - *Problema:* La ResNet-18 si aspetta foto a colori (3 canali: R, G, B). La mappa di profondità invece è un solo canale (bianco/nero che indica la distanza).
-- *Soluzione:* Nel codice (`dataset.py`) prendiamo la mappa di profondità e la "duplichiamo" su 3 canali identici per ingannare la rete e farle accettare l'input. È una tecnica veloce ed efficace.
-
-### Variante B: `extension` (L'Approccio Custom/Avanzato)
-Invece di "ingannare" una rete esistente, qui abbiamo scritto da zero una rete neurale su misura: la **`ResNet1ch`**.
-- Questa rete è progettata per accettare nativamente immagini a **1 singolo canale**. È matematicamente e architetturalmente più elegante e risponde alla richiesta del progetto di proporre una "estensione" o "miglioramento".
+- *Soluzione:* Nel codice (`dataset.py`) prendiamo la mappa di profondità e la "duplichiamo" su 3 canali identici. I pesi pre-addestrati su ImageNet racchiudono una conoscenza vasta su bordi e forme che si generalizza efficacemente anche sulla mappa di profondità.
 
 ---
 
-## 3. L'Architettura: Come avviene la "Fusione"
-Che tu scelga la variante Main o Extension, il concetto di fusione (`model.py`) è identico:
+## 3. Come avviene la "Fusione"
+
+Il concetto di fusione in `model.py` si basa su tre rami indipendenti:
 
 1. **Il ramo RGB:** Una ResNet-50 estrae 2048 numeri (feature) dai colori.
-2. **Il ramo Depth:** La ResNet-18 (o la custom) estrae 512 numeri dalla geometria.
+2. **Il ramo Depth:** La ResNet-18 estrae 512 numeri dalla geometria della profondità.
 3. **Il ramo Meta:** Prende 8 numeri geometrici (come la posizione della Bounding Box e i parametri della fotocamera) e li trasforma in 64 numeri.
 4. **La Fusione (Concatenazione):** Incolliamo tutti questi numeri insieme in un unico mega-vettore da 2624 numeri (`fused = torch.cat((f_rgb, f_depth, f_meta), dim=1)`).
 5. **Le Teste Finali:** Questo mega-vettore viene passato a un gruppo di layer (MLP) che si divide nelle solite due teste: Traslazione e Rotazione.
@@ -76,11 +73,7 @@ In pratica:
 ---
 
 ## Conclusioni per il Report
-Quando scriverai il report finale, questi sono i punti di forza del vostro progetto da evidenziare per la Fase 4:
-- Avete implementato **due varianti** architetturali (Standard ed Extension).
+Quando discuterai il report finale, questi sono i punti di forza del vostro progetto da evidenziare per la Fase 4:
 - Avete usato la rappresentazione **6D Continua** invece dei quaternioni classici, che è uno stato dell'arte moderno.
 - Avete fuso informazioni **RGB**, **Depth** e persino metadati della **Fotocamera/BBox** per aiutare la rete a calcolare la traslazione in modo robusto.
-
-### Analisi Empirica dei Risultati
-I test finali (che hanno raggiunto il **98.4%** nel Main e il **95.8%** nell'Extension) dimostrano che la fusione RGB-D funziona e risolve completamente l'incapacità della Baseline di prevedere la traslazione. 
-Un dato molto interessante (ottimo da discutere nel report) è che la variante **MAIN** (ResNet-18 standard ingannata con la Depth duplicata su 3 canali) ha battuto la variante **EXT** (ResNet-1ch custom). Questo accade spesso nel Deep Learning: i pesi pre-addestrati su milioni di immagini (ImageNet) racchiudono una conoscenza così vasta sui bordi e sulle forme, che riescono a superare il potenziale di una rete custom matematicamente più elegante ma addestrata da zero solo su poche migliaia di immagini.
+- Il modello finale raggiunge il **98.4%** di accuratezza ADD, dimostrando che la fusione RGB-D risolve completamente l'incapacità della Baseline di prevedere la traslazione.
