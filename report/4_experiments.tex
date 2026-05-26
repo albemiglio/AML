@@ -153,30 +153,7 @@ Phone        & \TODO{xx.x} & \TODO{xx.x} \\
 \end{tabular}
 \end{table}
 
-% ------------------------------------------------------------------
-\subsection{Ablation Study}
-\label{sec:exp_ablation}
 
-We isolate the contribution of each architectural decision in Table~\ref{tab:ablation}. Three components are tested in isolation: \textbf{(i)} the meta-branch (camera intrinsics + bounding-box prior), \textbf{(ii)} the 6D continuous rotation representation versus a naive quaternion head, and \textbf{(iii)} ImageNet pre-training of the depth branch.
-
-\begin{table}[t]
-\centering
-\caption{Ablation of the Phase~4 Main variant on the LineMod test split. Each row removes or replaces one component while keeping the others fixed at their default value.}
-\label{tab:ablation}
-\small
-\begin{tabular}{@{}lc@{}}
-\toprule
-Configuration & Accuracy (\%) \\
-\midrule
-\textbf{Full Phase~4 Main} (R50+R18 pretr., 6D, meta) & \textbf{98.4} \\
-\midrule
-$-$ Meta-branch (concat without bbox$/$K prior)  & \TODO{xx.x} \\
-$-$ 6D rotation, $+$ quaternion head             & \TODO{xx.x} \\
-$-$ ImageNet pretraining on depth branch         & \TODO{xx.x} \\
-$-$ Depth branch (RGB+meta only)                 & \TODO{xx.x} \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 % ------------------------------------------------------------------
 \subsection{Computational Cost}
