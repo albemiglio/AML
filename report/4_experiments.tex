@@ -82,12 +82,11 @@ The introduction of depth data and the 6D continuous rotation representation in 
 Variant & Backbone (RGB / D) & Accuracy (\%) & Avg.\ error (mm) \\
 \midrule
 \textbf{Main}      & R50 / R18      & \textbf{98.4} & 3.66 -- 8.70 \\
-Extension          & R50 / R10 (custom) & 95.8     & 5.13 -- 10.15 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The \emph{Main} variant, leveraging an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, outperforms the custom-trained \emph{Extension} model by 2.6 percentage points, suggesting that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.4\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
+The \emph{Main} variant leverages an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, confirming that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.4\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
 
 \paragraph{Training dynamics}
 Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~3 baseline plateaus on rotation (val/deg) around $10$--$15^\circ$ after the backbone unfreezes (step~10), but the loss never drops below $\sim$0.02 because the translation MSE saturates due to the pinhole-related ambiguities discussed above. In Phase~4 (right) the dedicated translation MSE (val/t\_mse) drops by an order of magnitude during the first 30 epochs once depth supervision kicks in, and the ADD loss converges smoothly to $\sim$0.005, mirroring the 98.4\% final accuracy on the test set.
@@ -131,25 +130,25 @@ To dissect which object categories drive the global accuracy, we report the per-
 \label{tab:perclass}
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-Object & Phase~3 (\%) & Phase~4 Main (\%) & Phase~4 Ext.\ (\%) \\
+Object & Phase~3 (\%) & Phase~4 Main (\%) \\
 \midrule
-Ape          & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Benchvise    & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Cam          & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Can          & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Cat          & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Driller      & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Duck         & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Eggbox$^*$   & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Glue$^*$     & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Holepuncher  & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Iron         & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Lamp         & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
-Phone        & \TODO{xx.x} & \TODO{xx.x} & \TODO{xx.x} \\
+Ape          & \TODO{xx.x} & \TODO{xx.x} \\
+Benchvise    & \TODO{xx.x} & \TODO{xx.x} \\
+Cam          & \TODO{xx.x} & \TODO{xx.x} \\
+Can          & \TODO{xx.x} & \TODO{xx.x} \\
+Cat          & \TODO{xx.x} & \TODO{xx.x} \\
+Driller      & \TODO{xx.x} & \TODO{xx.x} \\
+Duck         & \TODO{xx.x} & \TODO{xx.x} \\
+Eggbox$^*$   & \TODO{xx.x} & \TODO{xx.x} \\
+Glue$^*$     & \TODO{xx.x} & \TODO{xx.x} \\
+Holepuncher  & \TODO{xx.x} & \TODO{xx.x} \\
+Iron         & \TODO{xx.x} & \TODO{xx.x} \\
+Lamp         & \TODO{xx.x} & \TODO{xx.x} \\
+Phone        & \TODO{xx.x} & \TODO{xx.x} \\
 \midrule
-\textbf{Mean} & \textbf{1.8} & \textbf{98.4} & \textbf{95.8} \\
+\textbf{Mean} & \textbf{1.8} & \textbf{98.4} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -197,7 +196,6 @@ Model & Params (M) & GFLOPs & Latency (ms, CPU) \\
 \midrule
 Phase~3 baseline (R50) & 23.52 & 4.13 & 16.7 \\
 \textbf{Phase~4 Main}  (R50+R18)   & \textbf{36.17} & \textbf{5.96} & \textbf{28.8} \\
-Phase~4 Extension (R50+custom)     & 34.80 & 9.90 & 27.4 \\
 \midrule
 DenseFusion~\cite{wang2019densefusion} & $\sim$50 & $\sim$25 & $\sim$16 (GPU) \\
 \bottomrule

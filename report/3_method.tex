@@ -99,7 +99,7 @@ Second, ImageNet pre-training transfers generic mid-level features (edges, blobs
 
 \paragraph{Depth Branch}
 The second extractor operates on the cropped and pre-processed depth map.
-Because standard pre-trained CNNs expect a 3-channel input, we replicate the single-channel depth map across all three channels before passing it through a ResNet-18~\cite{he2016deep} backbone (\emph{Main} variant), yielding a 512D global average pooling vector $\mathbf{f}_{\text{depth}} \in \R^{512}$.
+Because standard pre-trained CNNs expect a 3-channel input, we replicate the single-channel depth map across all three channels before passing it through a ResNet-18~\cite{he2016deep} backbone, yielding a 512D global average pooling vector $\mathbf{f}_{\text{depth}} \in \R^{512}$.
 This channel-replication trick allows the use of ImageNet weights even for a fundamentally different modality, enabling the network to leverage pre-trained low-level filters (edge detectors) that naturally capture depth discontinuities and surface normal information encoded as intensity gradients in the depth image.
 Compared to a point-cloud-based branch (e.g., PointNet as in DenseFusion), a 2D CNN on the aligned depth crop is computationally lighter and architecturally uniform with the RGB branch, simplifying the fusion pipeline.
 
