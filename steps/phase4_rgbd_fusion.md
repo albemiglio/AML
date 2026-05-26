@@ -57,7 +57,7 @@ def rot6d_to_matrix(r6d):  # (B, 6) → (B, 3, 3)
 
 ## Depth Preprocessing
 
-### Normalizzazione e clipping (`phase4_fusion/main/rgbd_utils.py`, `phase4_fusion/extension/rgbd_utils.py`)
+### Normalizzazione e clipping (`phase4_fusion/main/rgbd_utils.py`)
 
 ```python
 def convert_depth_to_meters(depth_raw, depth_scale):
@@ -94,7 +94,7 @@ ADD = mean_i( || (R_pred · p_i + T_pred) − (R_gt · p_i + T_gt) || )
 
 Identiche a Phase 3: ADD / ADD-S con soglia 10% diametro, via `common/pose_metrics.pose_error`.
 
-Tutti e tre gli evaluator (`phase4_fusion/main/evaluate.py`, `phase4_fusion/extension/evaluate.py`, `phase3_baseline/evaluate.py`) importano ora da `common.pose_metrics` — nessuna duplicazione.
+L'evaluator (`phase4_fusion/main/evaluate.py`) importa da `common.pose_metrics` — nessuna duplicazione.
 
 
 
