@@ -64,7 +64,7 @@ The collapse to 9.4\% accuracy under the pinhole approximation is not a learning
 
 \begin{figure}[t]
     \centering
-    \includegraphics[width=\columnwidth]{report/figure/pinhole_failure.jpg}
+    \includegraphics[width=\columnwidth]{figure/pinhole_failure.jpg}
     \caption{Failure case of the pinhole depth approximation on the LineMod \textit{Driller}. The 2D bounding-box area on the side view (left, ``BBox GRANDE'') is multiple times larger than on the frontal view (right, ``BBox PICCOLO''), despite the camera being at essentially the same distance. Any estimator that assumes $Z \propto 1/s$ therefore predicts wildly different translations for two physically equivalent configurations, invalidating the monocular distance assumption.}
     \label{fig:pinhole_failure}
 \end{figure}
@@ -96,17 +96,17 @@ Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~
     \centering
     \begin{subfigure}[t]{0.48\textwidth}
         \centering
-        \includegraphics[width=\linewidth]{report/figure/wandb_phase3.jpg}
+        \includegraphics[width=\linewidth]{figure/wandb_phase3.jpg}
         \caption{Phase~3 baseline -- val/loss and val/deg.}
     \end{subfigure}\hfill
     \begin{subfigure}[t]{0.24\textwidth}
         \centering
-        \includegraphics[width=\linewidth]{report/figure/wandb_phase4_t_mse.jpg}
+        \includegraphics[width=\linewidth]{figure/wandb_phase4_t_mse.jpg}
         \caption{Phase~4 -- val/t\_mse.}
     \end{subfigure}\hfill
     \begin{subfigure}[t]{0.24\textwidth}
         \centering
-        \includegraphics[width=\linewidth]{report/figure/wandb_phase4_loss_add.jpg}
+        \includegraphics[width=\linewidth]{figure/wandb_phase4_loss_add.jpg}
         \caption{Phase~4 -- val/loss\_add.}
     \end{subfigure}
     \caption{Validation curves logged via Weights~\&~Biases. \textbf{Left:} the Phase~3 baseline learns rotation but plateaus on the composite loss because of monocular translation ambiguity. \textbf{Centre:} the Phase~4 translation MSE drops by an order of magnitude once depth is introduced. \textbf{Right:} the Phase~4 ADD loss converges to $\sim 5\!\times\!10^{-3}$, corresponding to $\sim$5\,mm average distance, well below the 10\%-of-diameter threshold.}

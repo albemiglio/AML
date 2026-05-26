@@ -126,7 +126,7 @@ To overcome the inherent depth ambiguity of monocular vision, we introduce a mul
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=\textwidth]{report/figure/architecture_phase4.jpg}
+    \includegraphics[width=\textwidth]{figure/architecture_phase4.jpg}
     \caption{Architecture of the proposed RGB-D Global Fusion model (Phase~4). Three independent feature extractors process the RGB crop (ResNet-50, 2048D), the depth crop (ResNet-18 on a channel-replicated depth map, 512D), and an 8D vector of metadata composed of normalized bounding-box coordinates and camera intrinsics (MLP encoder, 64D). The three vectors are concatenated into a 2624D shared representation, projected to a 256D latent space by the Fusion MLP, and decoded by two heads: a 3D translation head ($t_x, t_y, t_z$) and a 6D rotation head that is mapped to a valid $\SO$ matrix via differentiable Gram-Schmidt orthogonalization.}
     \label{fig:architecture}
 \end{figure*}
