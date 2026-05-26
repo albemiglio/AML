@@ -142,16 +142,31 @@ The upper bound of 3.0\,m covers the entire operative range of the LineMod datas
 \paragraph{Global Fusion Architecture}
 Our architecture extracts global features from three input modalities via independent branches, as illustrated in Figure~\ref{fig:architecture}:
 
-\begin{enumerate}
-    \item \textbf{RGB Branch}: A pre-trained ResNet-50 backbone processes the $224\!\times\!224\!\times\!3$ RGB crop through global average pooling, yielding a 2048D feature vector $\mathbf{f}_{\text{rgb}}$.
-    \item \textbf{Depth Branch}: A secondary CNN processes the cropped depth map to produce a 512D feature vector $\mathbf{f}_{\text{depth}}$. In the \emph{Main} variant, we use a pre-trained ResNet-18 by replicating the single-channel depth map across 3 channels to match the expected input format. In the \emph{Extension} variant, we design a custom single-channel ResNet-like backbone (4 residual blocks, trained from scratch).
-    \item \textbf{Meta-Branch}: An auxiliary encoder processes an 8D vector of geometric metadata:
-    \begin{equation}
-    \mathbf{m} = \left[\frac{c_x}{W},\; \frac{c_y}{H},\; \frac{w}{W},\; \frac{h}{H},\; \frac{f_x}{1000},\; \frac{f_y}{1000},\; \frac{p_x}{W},\; \frac{p_y}{H}\right]
-    \label{eq:meta}
-    \end{equation}
-    consisting of normalized bounding box coordinates and camera intrinsics. A two-layer MLP ($8 \rightarrow 128 \rightarrow 64$) maps this prior to a 64D vector $\mathbf{f}_{\text{meta}}$.
-\end{enumerate}
+\paragraph{RGB Branch}
+The first feature extractor is a ResNet-50~\cite{he2016deep} backbone initialized with \texttt{IMAGENET1K\_V1} weights and fine-tuned end-to-end.
+The $224\!\times\!224\!\times\!3$ RGB crop is fed through the full residual network; the final fully connected classification layer is replaced by \texttt{nn.Identity()}, so the output of the global average pooling layer constitutes a compact 2048D feature vector $\mathbf{f}_{\text{rgb}} \in \R^{2048}$.
+The design rationale for choosing ResNet-50 over shallower alternatives is two-fold.
+First, the 2048D bottleneck provides sufficient representational capacity to encode the fine-grained texture and appearance cues (surface markings, color gradients) that are critical to distinguish the canonical orientation of textureful LineMod objects.
+Second, ImageNet pre-training transfers generic mid-level features (edges, blobs, textures) that generalize across the limited diversity of the LineMod training sequences, substantially reducing the risk of overfitting compared to training from scratch.
+
+\paragraph{Depth Branch}
+The second extractor operates on the cropped and pre-processed depth map.
+Because standard pre-trained CNNs expect a 3-channel input, we replicate the single-channel depth map across all three channels before passing it through a ResNet-18~\cite{he2016deep} backbone (\emph{Main} variant), yielding a 512D global average pooling vector $\mathbf{f}_{\text{depth}} \in \R^{512}$.
+This channel-replication trick allows the use of ImageNet weights even for a fundamentally different modality, enabling the network to leverage pre-trained low-level filters (Sobel-like edge detectors) that naturally capture depth discontinuities and surface normal information encoded as intensity gradients in the depth image.
+Compared to a point-cloud-based branch (e.g., PointNet as in DenseFusion), a 2D CNN on the aligned depth crop is computationally lighter and architecturally uniform with the RGB branch, simplifying the fusion pipeline.
+In the \emph{Extension} variant, we replace ResNet-18 with a custom single-channel ResNet-like backbone consisting of four residual blocks trained from scratch, preserving the original single-channel input and avoiding any domain mismatch introduced by channel replication.
+
+\paragraph{Meta-Branch}
+The third branch addresses a subtle but practically important limitation of pure appearance-based pose estimation: the projected size and position of an object in the image encode strong geometric priors about its absolute depth and in-plane location that are difficult to recover solely from convolutional features.
+To make this prior explicit, we construct an 8D metadata vector:
+\begin{equation}
+\mathbf{m} = \left[\frac{c_x}{W},\; \frac{c_y}{H},\; \frac{w}{W},\; \frac{h}{H},\; \frac{f_x}{1000},\; \frac{f_y}{1000},\; \frac{p_x}{W},\; \frac{p_y}{H}\right]
+\label{eq:meta}
+\end{equation}
+where $(c_x, c_y)$ and $(w, h)$ are the bounding-box center and dimensions normalized by the image size $(W, H)$, and $(f_x, f_y, p_x, p_y)$ are the focal lengths and principal point of the camera intrinsic matrix $\mathbf{K}$, also normalized to lie in a comparable numerical range.
+A two-layer MLP ($8 \rightarrow 128 \rightarrow 64$, with ReLU activations) maps $\mathbf{m}$ to a 64D latent prior $\mathbf{f}_{\text{meta}} \in \R^{64}$.
+The normalization of each component ensures that the MLP inputs are in $[0,1]$, avoiding gradient imbalances due to the different physical scales of pixel coordinates and focal-length values.
+By injecting camera intrinsics directly into the network, the model can implicitly learn a form of geometry-aware decoding: for instance, a larger bounding box with a longer focal length unambiguously signals a smaller depth, a constraint that the convolutional branches alone cannot fully exploit without explicit access to $\mathbf{K}$.
 
 The three feature vectors are concatenated into a single 2624D representation:
 \begin{equation}
