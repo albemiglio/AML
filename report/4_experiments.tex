@@ -65,7 +65,7 @@ The collapse to 9.4\% accuracy under the pinhole approximation is not a learning
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figure/pinhole_failure.jpg}
-    \caption{Failure case of the pinhole depth approximation on the LineMod \textit{Driller}. The 2D bounding-box area on the side view (left, ``BBox GRANDE'') is multiple times larger than on the frontal view (right, ``BBox PICCOLO''), despite the camera being at essentially the same distance. Any estimator that assumes $Z \propto 1/s$ therefore predicts wildly different translations for two physically equivalent configurations, invalidating the monocular distance assumption.}
+    \caption{Failure case of the pinhole depth approximation on the LineMod \textit{Driller}. The 2D bounding-box area on the side view (left, large bounding box) is multiple times larger than on the frontal view (right, small bounding box), despite the camera being at essentially the same distance. Any estimator that assumes $Z \propto 1/s$ therefore predicts wildly different translations for two physically equivalent configurations, invalidating the monocular distance assumption.}
     \label{fig:pinhole_failure}
 \end{figure}
 
@@ -116,7 +116,14 @@ Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~
 \subsection{Qualitative Analysis}
 \label{sec:exp_qualitative}
 
-The Phase~4 Main predictions visualized in Figure~\ref{fig:teaser} illustrate the typical behaviour of the model on the test set. On compact, textured objects such as the \textit{Jug} and the \textit{Iron} the predicted box is virtually indistinguishable from the ground truth, with sub-5\,mm ADD error. On the textured \textit{Ape} (a benchmark stress-test for symmetric featureless surfaces) the model achieves $5.77$\,mm ADD, indicating that the depth branch successfully compensates for the limited RGB cues. Failure modes (ADD~$\gtrsim$~10\,mm) are concentrated on geometrically symmetric or partially occluded views of the \textit{Pitcher} and \textit{Camera}: in such cases the rotation head correctly identifies one of the two near-degenerate poses, but the absence of an iterative refinement step (in contrast to DenseFusion) prevents the model from breaking the symmetry.
+The Phase~4 Main predictions visualized in Figure~\ref{fig:teaser} illustrate the typical behavior of the model on the test set. On compact, textured objects such as the \textit{Jug} and the \textit{Iron} the predicted box is virtually indistinguishable from the ground truth, with sub-5\,mm ADD error. On the featureless \textit{Ape} (a challenging object due to its lack of discriminative texture) the model achieves $5.77$\,mm ADD, indicating that the depth branch successfully compensates for the limited RGB cues. Failure modes (ADD~$\gtrsim$~10\,mm) are concentrated on geometrically symmetric or partially occluded views of the \textit{Pitcher} and \textit{Camera}: in such cases the rotation head correctly identifies one of the two near-degenerate poses, but the absence of an iterative refinement step (in contrast to DenseFusion~\cite{wang2019densefusion}) prevents the model from breaking the symmetry (Figure~\ref{fig:cam_failure}).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figure/qualitative/05_cam_10.53mm.jpg}
+    \caption{Borderline failure case on the \textit{Camera} object (ADD $10.53$\,mm, just above the 10\%-of-diameter acceptance threshold). The rotational symmetry of the lens barrel generates near-degenerate pose hypotheses; without an iterative refinement step the model selects the nearest-energy pose, producing a small but detectable rotation error visible in the predicted bounding box (red) relative to the ground truth (green).}
+    \label{fig:cam_failure}
+\end{figure}
 
 % ------------------------------------------------------------------
 \subsection{Per-class Analysis}
@@ -126,7 +133,7 @@ To dissect which object categories drive the global accuracy, we report the per-
 
 \begin{table}[t]
 \centering
-\caption{Per-class ADD/ADD-S accuracy ($<$10\% of diameter), Phase~3 vs.\ Phase~4. Symmetric objects (\textit{Eggbox, Glue}) use ADD-S.}
+    \caption{Per-class ADD/ADD-S accuracy ($<$10\% of diameter), Phase~3 vs.\ Phase~4. For symmetric objects (\textit{Eggbox}$^*$, \textit{Glue}$^*$), the ADD-S variant is used, which computes the average closest-point distance rather than a fixed-correspondence distance, avoiding unfair penalization of specularly correct poses.}
 \label{tab:perclass}
 \small
 \setlength{\tabcolsep}{4pt}

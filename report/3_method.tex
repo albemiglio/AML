@@ -30,7 +30,7 @@ Rather than relying solely on the standard mAP@50 metric, we prioritize the more
 \label{sec:method_baseline}
 
 \paragraph{Architecture}
-We build a baseline model using a ResNet-50~\cite{he2016deep} backbone initialized with ImageNet (\texttt{IMAGENET1K\_V1}) pre-trained weights. The original 1000-class classification head is removed (replaced by \texttt{nn.Identity()}) to expose the 2048-dimensional feature vector. Two parallel linear regression heads are attached:
+We build a baseline model using a ResNet-50~\cite{he2016deep} backbone initialized with ImageNet~\cite{deng2009imagenet} (\texttt{IMAGENET1K\_V1}) pre-trained weights. The original 1000-class classification head is removed (replaced by \texttt{nn.Identity()}) to expose the 2048-dimensional feature vector. Two parallel linear regression heads are attached:
 
 \begin{itemize}
     \item \textbf{Rotation Head} (\texttt{quat\_head}): $\R^{2048} \rightarrow \R^{4}$, producing a quaternion $\bq = (x, y, z, w)$, followed by L2-normalization in the forward pass to enforce unit length: $\hat{\bq} = \bq / \|\bq\|_2$.
@@ -86,6 +86,9 @@ Raw depth maps from the LineMod sensor contain invalid pixels (depth$=$0) due to
     \label{eq:depth_clip}
 \end{equation}
 The upper bound of 3.0\,m covers the entire operative range of the LineMod dataset (objects at 0.3--0.7\,m, background $<$ 2\,m) while neutralizing outlier readings.
+
+\paragraph{Data Augmentation}
+To improve generalization, the RGB branch receives GPU-accelerated photometric augmentation during training via a custom \texttt{GPUAugmentation} module (implemented with Kornia): a \texttt{ColorJitter} (brightness, contrast, saturation $=0.1$; hue $=0.05$; $p=0.3$) and \texttt{RandomGaussianNoise} ($\sigma=0.02$; $p=0.2$) are applied on-the-fly on GPU tensors, followed by ImageNet normalization. The depth map is left unaugmented to preserve the metric integrity of the sensor readings. As in the Phase~3 baseline (Sec.~\ref{sec:method_baseline}), no geometric augmentations are applied.
 
 \paragraph{Global Fusion Architecture}
 Our architecture extracts global features from three input modalities via independent branches, as illustrated in Figure~\ref{fig:architecture}:
