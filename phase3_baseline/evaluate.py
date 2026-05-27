@@ -159,6 +159,11 @@ def generate_terminal_report(val_dataset, pose_net, yolo_model, models_info, ROO
         f" | YOLO+T_pred: {summary['Acc_Pred'].mean():.1f}%"
     )
 
+    os.makedirs("results", exist_ok=True)
+    out_csv = "results/phase3_perclass.csv"
+    summary.to_csv(out_csv, index=False, float_format="%.2f")
+    print(f"\n[saved] per-class summary -> {out_csv}")
+
 
 def run_inspector(report_only=False):
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"

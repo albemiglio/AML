@@ -13,7 +13,7 @@ We evaluate our models on a subset of the LineMod dataset~\cite{hinterstoisser20
 Performance is measured using the standard ADD metric (Average Distance of Model Points, Eq.~\ref{eq:add_loss}). A prediction is considered correct if the ADD error is less than 10\% of the object's diameter. For symmetric objects (e.g., \textit{Eggbox}, \textit{Glue}), we adopt the ADD-S variant that computes the closest-point distance.
 
 \paragraph{Training Details}
-All pose-estimation models are trained with the Adam optimizer~\cite{kingma2014adam}, initial learning rate $1\!\times\!10^{-4}$, weight decay $1\!\times\!10^{-4}$, batch size~32, for 100 epochs. A \texttt{ReduceLROnPlateau} scheduler halves the learning rate upon validation stagnation. For the Phase~3 baseline we employ a freeze/unfreeze strategy, locking the ResNet-50 backbone for the first 10 epochs to stabilize the regression heads before fine-tuning. The YOLO11n detector is fine-tuned from ImageNet-pretrained weights for 50 epochs at $640\!\times\!480$ input resolution.
+All pose-estimation models are trained with the Adam optimizer~\cite{kingma2014adam}, initial learning rate $1\!\times\!10^{-4}$, weight decay $1\!\times\!10^{-4}$, batch size~32, for 100 epochs. A \texttt{ReduceLROnPlateau} scheduler halves the learning rate upon validation stagnation. For the Phase~3 baseline we employ a freeze/unfreeze strategy, locking the ResNet-50 backbone for the first 10 epochs to prevent catastrophic forgetting of the ImageNet weights during the initial gradient surge of the randomly initialized regression heads, before unfreezing the backbone for end-to-end fine-tuning. The YOLO11n detector is fine-tuned from ImageNet-pretrained weights for 50 epochs at $640\!\times\!480$ input resolution.
 
 % ------------------------------------------------------------------
 \subsection{Results}
@@ -116,14 +116,7 @@ Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~
 \subsection{Qualitative Analysis}
 \label{sec:exp_qualitative}
 
-The Phase~4 Main predictions visualized in Figure~\ref{fig:teaser} illustrate the typical behavior of the model on the test set. On compact, textured objects such as the \textit{Jug} and the \textit{Iron} the predicted box is virtually indistinguishable from the ground truth, with sub-5\,mm ADD error. On the featureless \textit{Ape} (a challenging object due to its lack of discriminative texture) the model achieves $5.77$\,mm ADD, indicating that the depth branch successfully compensates for the limited RGB cues. Failure modes (ADD~$\gtrsim$~10\,mm) are concentrated on geometrically symmetric or partially occluded views of the \textit{Pitcher} and \textit{Camera}: in such cases the rotation head correctly identifies one of the two near-degenerate poses, but the absence of an iterative refinement step (in contrast to DenseFusion~\cite{wang2019densefusion}) prevents the model from breaking the symmetry (Figure~\ref{fig:cam_failure}).
-
-\begin{figure}[t]
-    \centering
-    \includegraphics[width=\columnwidth]{figure/qualitative/05_cam_10.53mm.jpg}
-    \caption{Borderline failure case on the \textit{Camera} object (ADD $10.53$\,mm, just above the 10\%-of-diameter acceptance threshold). The rotational symmetry of the lens barrel generates near-degenerate pose hypotheses; without an iterative refinement step the model selects the nearest-energy pose, producing a small but detectable rotation error visible in the predicted bounding box (red) relative to the ground truth (green).}
-    \label{fig:cam_failure}
-\end{figure}
+The Phase~4 Main predictions visualized in Figure~\ref{fig:teaser} illustrate the typical behavior of the model on the test set. On compact, textured objects such as the \textit{Jug} and the \textit{Iron} the predicted box is virtually indistinguishable from the ground truth, with sub-5\,mm ADD error. On the featureless \textit{Ape} (a challenging object due to its lack of discriminative texture) the model achieves $5.77$\,mm ADD, indicating that the depth branch successfully compensates for the limited RGB cues. Failure modes (ADD~$\gtrsim$~10\,mm) are concentrated on geometrically symmetric or partially occluded views of the \textit{Pitcher} and \textit{Camera}: in such cases the rotation head correctly identifies one of the two near-degenerate poses, but the absence of an iterative refinement step (in contrast to DenseFusion~\cite{wang2019densefusion}) prevents the model from breaking the symmetry.
 
 % ------------------------------------------------------------------
 \subsection{Per-class Analysis}

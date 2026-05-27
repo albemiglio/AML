@@ -155,6 +155,11 @@ def generate_fusion_report(test_samples, gt_cache, info_cache, model, yolo_model
     print(f"Samples skipped (missing info): {missing_info}")
     print(f"Samples skipped (YOLO/crop): {detection_misses}")
 
+    os.makedirs("results", exist_ok=True)
+    out_csv = "results/phase4_main_perclass.csv"
+    summary.to_csv(out_csv, index=False, float_format="%.2f")
+    print(f"\n[saved] per-class summary -> {out_csv}")
+
 
 def main():
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"

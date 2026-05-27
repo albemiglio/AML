@@ -228,6 +228,7 @@ def train():
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), SAVE_PATH_BEST)
+            wandb.save(SAVE_PATH_BEST)  # Upload .pth as wandb run file (coerente con phase4)
             wandb.run.summary["best_val_loss"] = best_val_loss
             log_and_print(f"New best model saved to {SAVE_PATH_BEST}.", LOG_FILE)
 
