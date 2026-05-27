@@ -1,51 +1,54 @@
-STIMA posa 6D
+# RECAP DEL PROGETTO: STIMA DELLA POSA 6D SU LINEMOD
+(Versione Finale - Aggiornata al termine dei lavori)
 
-Rilevamento ogetti (classificazione + localizzazzione tramite bounding boxes) --> faster R-CNN & YOLO
+Questo documento sintetizza l'intera pipeline sviluppata e testata con successo, corrispondente all'implementazione finale e al report accademico consegnato.
 
+## I DATI (Dataset LineMod Pre-processato)
+Il progetto sfrutta un sottoinsieme del dataset LineMod (13 oggetti).
+- **RGB:** Immagini a colori (per texture e classificazione).
+- **Depth (Profondità):** Mappe di profondità fondamentali per risolvere l'ambiguità geometrica monoculare.
+- **Bounding Box 2D:** Coordinate (x, y, w, h) per ritagliare gli oggetti dal disordine di sfondo.
+- **Posa 6D (Ground Truth):** Matrice di rotazione 3x3 e vettore di traslazione 3D (x, y, z) rispetto alla telecamera.
+- **Modelli 3D:** Nuvole di punti degli oggetti necessarie per calcolare la metrica ADD.
 
-Dataset LineMod : composto da  (analizzare come sono fatti questi dati ed eventualmente trasformarli)
-    Immagini RGB e di profondità (Depth): I dati visivi di base.
+---
 
-    Bounding Box: I riquadri 2D che racchiudono l'oggetto.
+## FASE 2: RILEVAMENTO OGGETTI (YOLO11n)
+Il primo step della pipeline consiste nel localizzare l'oggetto nello spazio 2D dell'immagine.
+- **Modello:** YOLO11 (variante "Nano", ultra-leggera ma precisissima).
+- **Addestramento:** Fine-tuning partendo da pesi ImageNet, su immagini riadattate al formato YOLO.
+- **Scopo:** Fornire un ritaglio (crop) il più stretto possibile attorno all'oggetto per le fasi successive.
+- **Metrica:** mAP@50-95, che assicura aderenza millimetrica ai bordi fisici dell'oggetto.
 
-    Posa 6D: I dati "ground truth" (la verità di riferimento) sulla posizione e rotazione.
+---
 
-    Object Mask (Maschere dell'oggetto): Segmentazione pixel per pixel che definisce esattamente quale area dell'immagine appartiene all'oggetto.
+## FASE 3: BASELINE MONOCULARE RGB (Il Fallimento "Pinhole")
+Un primo tentativo di stimare la posa 6D usando esclusivamente l'immagine RGB ritagliata.
+- **Architettura:** Una singola `ResNet-50` (senza l'ultimo strato di classificazione).
+- **Output:** La rete regredisce un quaternione 4D per la rotazione e un vettore 3D per la traslazione.
+- **Risultato (Lezione Appresa):** La rete impara benissimo la rotazione, ma fallisce catastroficamente sulla traslazione. Questo avviene a causa della cosiddetta "ambiguità del pinhole": senza informazioni di profondità, la rete prova a dedurre la distanza dell'oggetto unicamente da quanto il suo bounding box appare grande in 2D. Tuttavia, se l'oggetto è allungato (es. un trapano), ruotandolo il suo bounding box cambia drasticamente dimensioni anche se la distanza dalla telecamera rimane identica, ingannando completamente la rete.
 
-    Modelli 3D: I file geometrici (spesso in formato .ply o .obj) che rappresentano la forma reale dell'oggetto.
+---
 
+## FASE 4: GLOBAL FUSION RGB-D (La Soluzione Finale)
+Per superare i gravi limiti della Fase 3, l'architettura è stata potenziata integrando la mappa di profondità (Depth) e sistemando la matematica della rotazione.
+- **Architettura a Due Vie:**
+  1. `ResNet-50` elabora l'immagine RGB.
+  2. `ResNet-18` elabora la mappa di Depth (replicata su 3 canali per sfruttare i pesi ImageNet).
+- **Global Fusion:** Le feature globali estratte dai due backbone vengono concatenate insieme ai metadati del bounding box e date in pasto a un Multi-Layer Perceptron (MLP) finale.
+- **Rappresentazione Continua 6D:** Invece di usare i quaternioni, la rete restituisce un vettore di 6 numeri. Una procedura matematica (Gram-Schmidt, basata su Zhou et al.) forza questi 6 numeri a diventare sempre una matrice di rotazione 3x3 perfettamente valida (Ortogonale e con Determinante +1).
+- **Loss Diretta:** Ottimizzazione basata sull'errore ADD (la distanza reale 3D tra i punti predetti e quelli reali).
 
-La seconda fase:  l'implementazione di un modello di object detection pre-addestrato (YOLO). 
-Il modello sarà utilizzato per rilevare e localizzare gli oggetti nelle immagini, visualizzando i risultati tramite bounding box.
- Inoltre, verrà implementato un modulo di valutazione per misurare le prestazioni tramite la metrica mAP (mean Average Precision), 
-che indica quanto il riquadro previsto sia allineato con l'oggetto reale.
+## METRICHE DI VALUTAZIONE FINALI
+La metrica regina del progetto è l'**ADD (Average Distance of Model Points)**:
+- Calcola la distanza media tra la nuvola di punti reale dell'oggetto e la nuvola di punti spostata/ruotata secondo le predizioni della rete.
+- **ADD-S:** Una variante per oggetti simmetrici (come colla o scatola delle uova) che calcola la distanza dal punto "più vicino" anziché da quello corrispondente, per non penalizzare pose che visivamente sono identiche ma matematicamente scambiate.
+- **Soglia di Successo:** Una predizione è considerata "Corretta" se l'errore ADD è inferiore al 10% del diametro massimo dell'oggetto.
+- **Risultato Raggiunto:** La Fase 4 chiude con un formidabile **98.5% di accuratezza**, spazzando via l'1.8% della vecchia Fase 3.
 
-FASE 3: Modulo di Stima della Posa 6D
-
-Questa fase si concentrerà sullo sviluppo di un modulo di stima della posa utilizzando i bounding box rilevati nello step precedente.
-È una rete neurale convoluzionale (CNN) progettata per la stima della posa 3D, focalizzata specificamente sulla previsione della rotazione sotto forma di quaternioni.
-Il modello riceve un'immagine RGB come input e restituisce un vettore a quattro dimensioni che rappresenta l'orientamento dell'oggetto.Quindi fa regressione(calcolo numeri continui per rappresentare coordinate e angolo)
-    
-    Architettura e Training:
-
-    Backbone: Utilizza una ResNet-50 inizializzata con pesi pre-addestrati su ImageNet per estrarre feature visive di alto livello.
-
-    Modifica: Lo strato finale di classificazione della ResNet-50 viene rimosso e sostituito con un nuovo "head" di regressione 
-    (fully connected) per mappare le feature estratte in un quaternione 4D.
-
-    Loss Function: Il sistema viene addestrato utilizzando una funzione di perdita che combina la perdita di traslazione e la perdita di 
-    rotazione per ottimizzare l'accuratezza delle previsioni.
-
-La Metrica ADD (Average Distance):
-Per valutare le prestazioni del tuo modello, devi utilizzare la metrica ADD, che calcola la distanza media tra i punti corrispondenti di un modello 3D di un oggetto.
-
----------------------------------------------------------------------------
-Un dettaglio importante:
-Nella Fase 3 userai la ResNet-50. Mentre YOLO è una rete già "confezionata" che devi solo far girare (pretrained),
- sulla ResNet dovrai lavorare di più perché dovrai staccare la parte finale (quella che di solito dice "questo
- è un cane") 
-e attaccarci un modulo che sputa fuori numeri (i quaternioni).
-
-Immagine intera → YOLO → Rettangolo 2D.
-
-Rettangolo 2D → Ritaglio (Crop) → Fase 3 (ResNet).
+## IL FLUSSO (PIPELINE COMPLETA)
+1. L'immagine arriva per intero.
+2. `YOLO11n` trova l'oggetto e ne estrae il bounding box 2D.
+3. Il bounding box viene usato per ritagliare sia la foto RGB che la maschera di Profondità (Depth).
+4. `Global Fusion` (ResNet-50 + ResNet-18) processa i ritagli e sputa i famosi 6 valori di rotazione e i 3 di traslazione.
+5. La matematica ricostruisce la Posa 6D esatta.
