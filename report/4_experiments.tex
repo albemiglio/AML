@@ -130,28 +130,31 @@ To dissect which object categories drive the global accuracy, we report the per-
 \label{tab:perclass}
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lcc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
-Object & Phase~3 (\%) & Phase~4 Main (\%) \\
+Object & Diameter (mm) & Phase~3 (\%) & Phase~4 Main (\%) \\
 \midrule
-Ape          & 0.0 & 94.8 \\
-Benchvise    & 1.4 & 99.5 \\
-Cam          & 0.8 & 98.8 \\
-Can          & 0.8 & 99.2 \\
-Cat          & 0.0 & 98.8 \\
-Driller      & 2.4 & 99.6 \\
-Duck         & 0.0 & 90.8 \\
-Eggbox$^*$   & 5.0 & 100.0 \\
-Glue$^*$     & 7.4 & 100.0 \\
-Holepuncher  & 0.4 & 99.6 \\
-Iron         & 2.6 & 99.6 \\
-Lamp         & 2.0 & 100.0 \\
-Phone        & 0.9 & 99.6 \\
+Ape          & 102.1 & 0.0 & 94.8 \\
+Benchvise    & 247.5 & 1.4 & 99.5 \\
+Cam          & 172.5 & 0.8 & 98.8 \\
+Can          & 201.4 & 0.8 & 99.2 \\
+Cat          & 154.5 & 0.0 & 98.8 \\
+Driller      & 261.5 & 2.4 & 99.6 \\
+Duck         & 109.0 & 0.0 & 90.8 \\
+Eggbox$^*$   & 164.6 & 5.0 & 100.0 \\
+Glue$^*$     & 175.9 & 7.4 & 100.0 \\
+Holepuncher  & 145.5 & 0.4 & 99.6 \\
+Iron         & 278.1 & 2.6 & 99.6 \\
+Lamp         & 282.6 & 2.0 & 100.0 \\
+Phone        & 212.4 & 0.9 & 99.6 \\
 \midrule
-\textbf{Mean} & \textbf{1.8} & \textbf{98.5} \\
+\textbf{Mean} & --- & \textbf{1.8} & \textbf{98.5} \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{A note on metric normalization.}
+A closer inspection of Table~\ref{tab:perclass} reveals that the two underperforming classes, \textit{Ape} (94.8\%) and \textit{Duck} (90.8\%), are also the two smallest objects in the LineMod subset (diameter $\sim$10\,cm, against 25--28\,cm for \textit{Iron}, \textit{Lamp} and \textit{Driller}). Although the ADD$<$10\% acceptance criterion scales \emph{relatively} with the object diameter, this normalization compensates only for object size, not for the coupled effects that depend on it. We identify three structural sources of residual bias: \textbf{(i)} the absolute acceptance tolerance shrinks linearly with diameter ($\sim$10\,mm for \textit{Ape} vs.\ $\sim$28\,mm for \textit{Lamp}), so the same absolute pose-prediction noise crosses the threshold far more often on small objects; \textbf{(ii)} the cropped RGB and depth tensors contain fewer informative pixels per object, lowering the signal-to-noise ratio fed to the backbones; \textbf{(iii)} any pixel-level error in the YOLO bounding box propagates as a larger fraction of the object footprint, perturbing both the RGB texture and the depth crop. The Ape/Duck gap should therefore be read not as a learning failure of the depth branch, but as the residual bias of a metric that is normalized in tolerance but not in input information density. The 100\% scores on the symmetric \textit{Eggbox} and \textit{Glue}, evaluated under the relaxed ADD-S, reinforce this reading by showing that whenever the metric absorbs an additional source of ambiguity, the per-class accuracy saturates.
 
 
 
