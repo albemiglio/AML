@@ -61,10 +61,10 @@ The balance parameter $\lambda$ is set to 1.0. Since $\mathcal{L}_{\text{rot}} \
 \paragraph{Pinhole Translation Estimation}
 As an additional evaluation baseline, we implement a geometric depth estimation using the pinhole camera model. Given a bounding box with pixel size $s = \max(w, h)$ and the known real-world object diameter $d$, the depth is estimated as:
 \begin{equation}
-    Z = \frac{f_x \cdot d}{s}, \quad X = \frac{(u - c_x) \cdot Z}{f_x}, \quad Y = \frac{(v - c_y) \cdot Z}{f_y}
+    Z = \frac{f_x \cdot d}{s}, \quad X = \frac{(u - p_x) \cdot Z}{f_x}, \quad Y = \frac{(v - p_y) \cdot Z}{f_y}
     \label{eq:pinhole}
 \end{equation}
-where $(u, v)$ is the bounding box center, $(c_x, c_y)$ is the camera principal point, and $(f_x, f_y)$ are the focal lengths. This approximation implicitly assumes a spherical object, leading to significant errors for elongated or asymmetric geometries.
+where $(u, v)$ is the bounding box center, $(p_x, p_y)$ is the camera principal point, and $(f_x, f_y)$ are the focal lengths. This approximation implicitly assumes a spherical object, leading to significant errors for elongated or asymmetric geometries.
 
 % ------------------------------------------------------------------
 \subsection{RGB-D Global Fusion}
