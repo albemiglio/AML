@@ -47,6 +47,7 @@ The Phase~3 baseline demonstrates that, while a ResNet-50 backbone can effective
 \caption{Phase~3 baseline accuracy (ADD/ADD-S $<$ 10\% of object diameter).}
 \label{tab:phase3}
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llc@{}}
 \toprule
 Configuration & Translation source & Accuracy (\%) \\
@@ -56,7 +57,7 @@ YOLO + $\bt_{\text{gt}}$     & Ground truth        & \textbf{92.9} \\
 YOLO + $\bt_{\text{pinhole}}$ & Pinhole approx.    & 9.4 \\
 YOLO + $\bt_{\text{pred}}$   & Model regression    & \textbf{1.8} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \paragraph{Why pinhole fails: a geometric counter-example.}
@@ -77,13 +78,14 @@ The introduction of depth data and the 6D continuous rotation representation in 
 \caption{Phase~4 RGB-D Global Fusion performance on the LineMod test split.}
 \label{tab:phase4}
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llcc@{}}
 \toprule
 Variant & Backbone (RGB / D) & Accuracy (\%) & Avg.\ error (mm) \\
 \midrule
 \textbf{Main}      & R50 / R18      & \textbf{98.4} & 3.66 -- 8.56 \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 The \emph{Main} variant leverages an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, confirming that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.4\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
@@ -156,28 +158,3 @@ Phone        & 212.4 & 0.9 & 99.6 \\
 \paragraph{A note on metric normalization.}
 A closer inspection of Table~\ref{tab:perclass} reveals that the two underperforming classes, \textit{Ape} (94.8\%) and \textit{Duck} (90.8\%), are also the two smallest objects in the LineMod subset (diameter $\sim$10\,cm, against 25--28\,cm for \textit{Iron}, \textit{Lamp} and \textit{Driller}). Although the ADD$<$10\% acceptance criterion scales \emph{relatively} with the object diameter, this normalization compensates only for object size, not for the coupled effects that depend on it. We identify three structural sources of residual bias: \textbf{(i)} the absolute acceptance tolerance shrinks linearly with diameter ($\sim$10\,mm for \textit{Ape} vs.\ $\sim$28\,mm for \textit{Lamp}), so the same absolute pose-prediction noise crosses the threshold far more often on small objects; \textbf{(ii)} the cropped RGB and depth tensors contain fewer informative pixels per object, lowering the signal-to-noise ratio fed to the backbones; \textbf{(iii)} any pixel-level error in the YOLO bounding box propagates as a larger fraction of the object footprint, perturbing both the RGB texture and the depth crop. The Ape/Duck gap should therefore be read not as a learning failure of the depth branch, but as the residual bias of a metric that is normalized in tolerance but not in input information density. The 100\% scores on the symmetric \textit{Eggbox} and \textit{Glue}, evaluated under the relaxed ADD-S, reinforce this reading by showing that whenever the metric absorbs an additional source of ambiguity, the per-class accuracy saturates.
 
-
-
-% ------------------------------------------------------------------
-\subsection{Computational Cost}
-\label{sec:exp_compute}
-
-A central claim of this work is that competitive RGB-D pose accuracy can be obtained without the heavy machinery of point-cloud processing. Table~\ref{tab:compute} compares the parameter count, FLOPs and inference latency of our pipeline against the original DenseFusion. The Global Fusion design is roughly an order of magnitude cheaper in FLOPs and parameter count, while remaining within 1--2 percentage points of dense-fusion accuracy on this benchmark.
-
-\begin{table}[t]
-\centering
-\caption{Computational cost on a single forward pass at $224\!\times\!224$ input, batch size 1. CPU latency measured on an Apple M-series chip with 4 threads (upper bound; on a modern GPU all values would be $\sim$10$\times$ lower but the relative ratios would be preserved). DenseFusion figures from the original publication~\cite{wang2019densefusion} (PoseNet + iterative refinement, Titan~X GPU).}
-\label{tab:compute}
-\small
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Model & Params (M) & GFLOPs & Latency (ms, CPU) \\
-\midrule
-Phase~3 baseline (R50) & 23.52 & 4.13 & 16.7 \\
-\textbf{Phase~4 Main}  (R50+R18)   & \textbf{36.17} & \textbf{5.96} & \textbf{28.8} \\
-\midrule
-DenseFusion~\cite{wang2019densefusion} & $\sim$50 & $\sim$25 & $\sim$16 (GPU) \\
-\bottomrule
-\end{tabular}
-\end{table}
