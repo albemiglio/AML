@@ -91,26 +91,12 @@ Variant & Backbone (RGB / D) & Accuracy (\%) & Avg.\ error (mm) \\
 The \emph{Main} variant leverages an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, confirming that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.4\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
 
 \paragraph{Training dynamics}
-Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~3 baseline plateaus on rotation (val/deg) around $12^\circ$--$15^\circ$ after the backbone unfreezes (step~10). However, its translation MSE (val/t\_mse) hits a hard floor around $\sim$0.004, causing the composite loss to saturate at $\sim$0.013 due to the pinhole-related ambiguities discussed above. In contrast, in Phase~4 (right) the dedicated translation MSE drops by over two orders of magnitude ($\sim$0.000015) once depth supervision kicks in, allowing the ADD loss to converge smoothly to $\sim$0.006, mirroring the 98.4\% final accuracy on the test set.
+Figure~\ref{fig:wandb} compares the validation trajectories of the two phases on a unified epoch axis. \textbf{(a)} The Phase~3 baseline successfully learns rotation: after the backbone unfreezes at epoch~10, the mean rotation error drops from $\sim$90$^\circ$ to a stable $12.6^\circ$, confirming that monocular RGB carries enough information for orientation. \textbf{(b)} The translation MSE, plotted on a logarithmic axis to make the dynamic range visible, tells the opposite story: Phase~3 plateaus at $4.1\!\times\!10^{-3}$ -- the pinhole-related floor discussed above -- while Phase~4, by introducing depth supervision, drives the same metric down to $1.5\!\times\!10^{-5}$, a reduction of approximately $2.4$ orders of magnitude. \textbf{(c)} This translation gap propagates directly to the loss curves: the Phase~3 composite loss saturates at $0.013$, while the Phase~4 ADD loss converges smoothly to $0.007$, consistent with the $98.4\%$ final ADD accuracy on the test set.
 
 \begin{figure*}[t]
     \centering
-    \begin{subfigure}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{figure/wandb_phase3.jpg}
-        \caption{Phase~3 baseline -- val/loss and val/deg.}
-    \end{subfigure}\hfill
-    \begin{subfigure}[t]{0.24\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{figure/wandb_phase4_t_mse.jpg}
-        \caption{Phase~4 -- val/t\_mse.}
-    \end{subfigure}\hfill
-    \begin{subfigure}[t]{0.24\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{figure/wandb_phase4_loss_add.jpg}
-        \caption{Phase~4 -- val/loss\_add.}
-    \end{subfigure}
-    \caption{Validation curves logged via Weights~\&~Biases. \textbf{Left:} the Phase~3 baseline learns rotation but plateaus on the composite loss because of monocular translation ambiguity. \textbf{Centre:} the Phase~4 translation MSE drops by over two orders of magnitude once depth is introduced. \textbf{Right:} the Phase~4 ADD loss converges to $\sim 5\!\times\!10^{-3}$, corresponding to $\sim$5\,mm average distance, well below the 10\%-of-diameter threshold.}
+    \includegraphics[width=\textwidth]{figure/training_dynamics.pdf}
+    \caption{Validation training dynamics on a unified epoch axis (Phase~3: 50 epochs, Phase~4: 100 epochs). The dotted vertical line marks the Phase~3 backbone-unfreeze epoch. \textbf{(a)} Mean rotation error: Phase~3 reaches $12.6^\circ$ after unfreeze, showing that rotation is learnable from RGB. \textbf{(b)} Translation MSE in $\log$-scale: Phase~3 plateaus at $4.1\!\times\!10^{-3}$ (the pinhole floor); Phase~4 reaches $1.5\!\times\!10^{-5}$, a $\sim$2.4-order-of-magnitude reduction, validating the role of depth supervision. \textbf{(c)} Validation loss in $\log$-scale: the Phase~3 composite loss saturates at $0.013$, while the Phase~4 ADD loss converges smoothly to $0.007$.}
     \label{fig:wandb}
 \end{figure*}
 
