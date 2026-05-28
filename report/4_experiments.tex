@@ -81,15 +81,15 @@ The introduction of depth data and the 6D continuous rotation representation in 
 \toprule
 Variant & Backbone (RGB / D) & Accuracy (\%) & Avg.\ error (mm) \\
 \midrule
-\textbf{Main}      & R50 / R18      & \textbf{98.5} & 3.66 -- 8.56 \\
+\textbf{Main}      & R50 / R18      & \textbf{98.4} & 3.66 -- 8.56 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The \emph{Main} variant leverages an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, confirming that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.5\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
+The \emph{Main} variant leverages an ImageNet-pretrained ResNet-18 on a channel-replicated depth map, confirming that transfer learning provides a strong inductive prior even on a non-natural-image modality. Overall, the move from Phase~3 to Phase~4 yields a $\sim$55$\times$ improvement in accuracy ($1.8\% \rightarrow 98.4\%$), validating the central thesis of this work: \emph{multimodal depth fusion combined with a mathematically well-posed rotation parametrization is sufficient to close the gap with computationally expensive dense-fusion baselines}.
 
 \paragraph{Training dynamics}
-Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~3 baseline plateaus on rotation (val/deg) around $10$--$15^\circ$ after the backbone unfreezes (step~10), but the loss never drops below $\sim$0.02 because the translation MSE saturates due to the pinhole-related ambiguities discussed above. In Phase~4 (right) the dedicated translation MSE (val/t\_mse) drops by an order of magnitude during the first 30 epochs once depth supervision kicks in, and the ADD loss converges smoothly to $\sim$0.005, mirroring the 98.5\% final accuracy on the test set.
+Figure~\ref{fig:wandb} shows the validation curves of the two phases. The Phase~3 baseline plateaus on rotation (val/deg) around $10$--$15^\circ$ after the backbone unfreezes (step~10), but the loss never drops below $\sim$0.02 because the translation MSE saturates due to the pinhole-related ambiguities discussed above. In Phase~4 (right) the dedicated translation MSE (val/t\_mse) drops by an order of magnitude during the first 30 epochs once depth supervision kicks in, and the ADD loss converges smoothly to $\sim$0.005, mirroring the 98.4\% final accuracy on the test set.
 
 \begin{figure*}[t]
     \centering
@@ -148,7 +148,7 @@ Iron         & 278.1 & 2.6 & 99.6 \\
 Lamp         & 282.6 & 2.0 & 100.0 \\
 Phone        & 212.4 & 0.9 & 99.6 \\
 \midrule
-\textbf{Mean} & --- & \textbf{1.8} & \textbf{98.5} \\
+\textbf{Mean} & --- & \textbf{1.8} & \textbf{98.4} \\
 \bottomrule
 \end{tabular}
 \end{table}
