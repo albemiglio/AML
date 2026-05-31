@@ -74,7 +74,62 @@ To overcome the inherent depth ambiguity of monocular vision, we introduce a mul
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=\textwidth]{figure/architecture_phase4.jpg}
+    \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[
+        >={Latex[length=2.2mm]},
+        font=\footnotesize,
+        node distance=4mm and 12mm,
+        blk/.style={draw=gray!55, rounded corners=2pt, fill=gray!8, align=center,
+                    minimum height=7mm, minimum width=17mm, inner sep=3pt},
+        cat/.style={draw=gray!55, circle, fill=blue!10, align=center,
+                    minimum size=11mm, inner sep=1pt},
+        spl/.style={draw=gray!55, diamond, aspect=1.4, fill=orange!16, align=center,
+                    inner sep=1pt, minimum size=7mm},
+        fl/.style={->, draw=gray!60, line width=0.5pt},
+        dlab/.style={font=\scriptsize\itshape, text=gray!60, inner sep=1.5pt},
+    ]
+        % inputs
+        \node[blk] (rgb) {RGB Crop};
+        \node[blk, below=of rgb] (dep) {Depth Crop};
+        \node[blk, below=of dep] (met) {Metadata\\BBox \& Camera};
+        % feature extractors
+        \node[blk, right=of rgb] (r50) {ResNet-50};
+        \node[blk, right=of dep] (r18) {ResNet-18};
+        \node[blk, right=of met] (enc) {MLP Encoder};
+        % fusion path
+        \node[cat, right=20mm of r18] (cat) {Concat};
+        \node[blk, right=14mm of cat] (fus) {Fusion MLP};
+        \node[spl, right=of fus] (spl) {Split};
+        % heads
+        \node[blk, above right=2mm and 12mm of spl] (th) {Translation\\Head};
+        \node[blk, below right=2mm and 12mm of spl] (rh) {Rotation\\Head};
+        % outputs
+        \node[blk, right=12mm of th] (tout) {Translation\\$(t_x,t_y,t_z)$};
+        \node[blk, right=12mm of rh] (gs) {Gram--Schmidt\\Orthogonalization};
+        \node[blk, right=of gs] (rout) {Orthogonal\\Rotation $\mathbf{R}$};
+        % edges
+        \draw[fl] (rgb) -- (r50);
+        \draw[fl] (dep) -- (r18);
+        \draw[fl] (met) -- (enc);
+        \draw[fl] (r50.east) -- (cat) node[dlab, pos=0.45, above]{2048D};
+        \draw[fl] (r18.east) -- (cat) node[dlab, midway, above]{512D};
+        \draw[fl] (enc.east) -- (cat) node[dlab, pos=0.45, below]{64D};
+        \draw[fl] (cat) -- (fus) node[dlab, midway, above]{2624D};
+        \draw[fl] (fus) -- (spl) node[dlab, midway, above]{256D};
+        \draw[fl] (spl.north) to[out=90, in=180] (th.west);
+        \draw[fl] (spl.south) to[out=-90, in=180] (rh.west);
+        \draw[fl] (th) -- (tout) node[dlab, midway, above]{3D};
+        \draw[fl] (rh) -- (gs) node[dlab, midway, above]{6D};
+        \draw[fl] (gs) -- (rout) node[dlab, midway, above]{$3{\times}3$};
+        % group frames
+        \begin{scope}[on background layer]
+            \node[draw=gray!45, dashed, rounded corners=3pt, inner sep=2.6mm,
+                  fit=(rgb)(met), label={[font=\scriptsize\sffamily, text=gray!70]above:Inputs}] {};
+            \node[draw=gray!45, dashed, rounded corners=3pt, inner sep=2.6mm,
+                  fit=(r50)(enc), label={[font=\scriptsize\sffamily, text=gray!70]above:Feature Extractors}] {};
+        \end{scope}
+    \end{tikzpicture}%
+    }
     \caption{Architecture of the proposed RGB-D Global Fusion model (Phase~4). Three independent feature extractors process the RGB crop (ResNet-50, 2048D), the depth crop (ResNet-18 on a channel-replicated depth map, 512D), and an 8D vector of metadata composed of normalized bounding-box coordinates and camera intrinsics (MLP encoder, 64D). The three vectors are concatenated into a 2624D shared representation, projected to a 256D latent space by the Fusion MLP, and decoded by two heads: a 3D translation head ($t_x, t_y, t_z$) and a 6D rotation head that is mapped to a valid $\SO$ matrix via differentiable Gram-Schmidt orthogonalization.}
     \label{fig:architecture}
 \end{figure*}
