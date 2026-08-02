@@ -67,6 +67,15 @@ terminate_pod_if_requested() {
 }
 trap terminate_pod_if_requested EXIT
 
+# The trap above dies with this script and renews its grace period forever while a
+# training process exists, so it cannot save us from a hung job or a hard kill.
+# The watchdog runs detached with a hard deadline. Disable with NO_WATCHDOG=1.
+if [ -z "${NO_WATCHDOG:-}" ] && [ -n "${RUNPOD_POD_ID:-}" ]; then
+    WATCH_LOG="$PIPELINE_LOG" MAX_HOURS="${MAX_HOURS:-8}" \
+        nohup bash "$PROJECT_ROOT/tools/pod_watchdog.sh" > "$PROJECT_ROOT/watchdog.log" 2>&1 &
+    log "Watchdog started (pid $!) — hard deadline ${MAX_HOURS:-8}h, see watchdog.log"
+fi
+
 # ---------- 0. Detect Blackwell, upgrade PyTorch if needed ----------
 log "=== 0/5: pytorch compatibility check ==="
 NEEDS_TORCH_UPGRADE=$(python -c "

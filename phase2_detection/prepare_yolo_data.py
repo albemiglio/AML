@@ -119,9 +119,12 @@ def main():
         'test_lbl':  os.path.join(OUTPUT_DIR, 'labels', 'test'),
     }
     
+    # Wipe, don't overwrite: a frame that moves from train to test across two runs would
+    # otherwise be left behind in its old split folder, silently re-introducing leakage.
     if os.path.exists(OUTPUT_DIR):
-        print("Warning: Output folder already exists. Files will be overwritten.")
-    
+        print("Output folder already exists: removing it to rebuild the split from scratch.")
+        shutil.rmtree(OUTPUT_DIR)
+
     for d in dirs.values():
         os.makedirs(d, exist_ok=True)
 

@@ -43,7 +43,7 @@ def build_optimizer(model, lr, weight_decay, backbone_unfrozen):
 
 
 def build_scheduler(optimizer):
-    return ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+    return ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=12)
 
 
 def train():
@@ -52,8 +52,11 @@ def train():
     BASE_LR = 1e-4
     BACKBONE_LR_FACTOR = 0.1
     WEIGHT_DECAY = 1e-4
-    EPOCHS = 50
-    FREEZE_EPOCHS = 10
+    # Split ufficiale 15/85: 2016 immagini di train, ~63 step/epoca contro i ~296 di prima.
+    # Il tetto sale, a fermare il training è l'early stopping sulla validation.
+    EPOCHS = int(os.environ.get("EPOCHS", "250"))
+    EARLY_STOP_PATIENCE = int(os.environ.get("EARLY_STOP_PATIENCE", "30"))
+    FREEZE_EPOCHS = int(os.environ.get("FREEZE_EPOCHS", "40"))
     EXTRA_EPOCHS_ON_RESUME = 50  # epoche aggiuntive quando si riprende da checkpoint
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
@@ -97,6 +100,7 @@ def train():
 
     start_epoch = 0
     best_val_loss = float("inf")
+    epochs_no_improve = 0
     total_epochs = EPOCHS
 
     if os.path.exists(CHECKPOINT_PATH):
@@ -106,6 +110,7 @@ def train():
         backbone_unfrozen = checkpoint.get("backbone_unfrozen", False)
         start_epoch = checkpoint.get("epoch", -1) + 1
         best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+        epochs_no_improve = checkpoint.get("epochs_no_improve", 0)
 
         optimizer = build_optimizer(
             model,
@@ -222,15 +227,27 @@ def train():
             "scheduler_state_dict": scheduler.state_dict(),
             "best_val_loss": best_val_loss,
             "backbone_unfrozen": backbone_unfrozen,
+            "epochs_no_improve": epochs_no_improve,
         }
         torch.save(checkpoint_payload, CHECKPOINT_PATH)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            epochs_no_improve = 0
             torch.save(model.state_dict(), SAVE_PATH_BEST)
             wandb.save(SAVE_PATH_BEST)  # Upload .pth as wandb run file (coerente con phase4)
             wandb.run.summary["best_val_loss"] = best_val_loss
             log_and_print(f"New best model saved to {SAVE_PATH_BEST}.", LOG_FILE)
+        else:
+            epochs_no_improve += 1
+            log_and_print(f"No improvement for {epochs_no_improve}/{EARLY_STOP_PATIENCE} epochs.", LOG_FILE)
+
+        # dopo lo sblocco del backbone il training riparte, non fermarsi sulle epoche congelate
+        if backbone_unfrozen and epochs_no_improve >= EARLY_STOP_PATIENCE:
+            log_and_print(
+                f"Early stop at epoch {epoch+1}: no improvement on the best "
+                f"({best_val_loss:.6f}) for {EARLY_STOP_PATIENCE} epochs.", LOG_FILE)
+            break
 
     log_and_print("Training completed.", LOG_FILE)
 

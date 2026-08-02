@@ -35,7 +35,10 @@ def train():
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"
     BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "32"))
     LEARNING_RATE = float(os.environ.get("LEARNING_RATE", "1e-4"))
-    EPOCHS = int(os.environ.get("EPOCHS", "100"))
+    # Con lo split ufficiale 15/85 il train set è 2016 immagini: ~32 step/epoca contro i ~148
+    # di prima, quindi il tetto di epoche sale e a decidere quando fermarsi è la validation.
+    EPOCHS = int(os.environ.get("EPOCHS", "400"))
+    EARLY_STOP_PATIENCE = int(os.environ.get("EARLY_STOP_PATIENCE", "30"))
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     AMP_ENABLED = (DEVICE.type == "cuda")
     AMP_DTYPE = torch.bfloat16 if (DEVICE.type == "cuda" and torch.cuda.is_bf16_supported()) else torch.float16
@@ -88,10 +91,11 @@ def train():
     # bf16 doesn't need GradScaler (no overflow); fp16 does.
     scaler = GradScaler(DEVICE.type, enabled=(AMP_ENABLED and AMP_DTYPE == torch.float16))
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=12)
 
     start_epoch = 0
     best_val_loss = float('inf')
+    epochs_no_improve = 0
 
     if os.path.exists(CHECKPOINT_PATH):
         log_and_print(f"Loading checkpoint from {CHECKPOINT_PATH}...", LOG_FILE)
@@ -101,6 +105,7 @@ def train():
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        epochs_no_improve = checkpoint.get('epochs_no_improve', 0)
         log_and_print(f"Resuming from epoch {start_epoch}", LOG_FILE)
 
     for epoch in range(start_epoch, EPOCHS):
@@ -227,17 +232,28 @@ def train():
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
-            'best_val_loss': best_val_loss
+            'best_val_loss': best_val_loss,
+            'epochs_no_improve': epochs_no_improve
         }
         torch.save(checkpoint_data, CHECKPOINT_PATH)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            epochs_no_improve = 0
             wandb.save(SAVE_PATH_BEST) # Carica il file .pth su wandb
             torch.save(model.state_dict(), SAVE_PATH_BEST)
             log_and_print(f"⭐ NEW BEST! Model saved to {SAVE_PATH_BEST}", LOG_FILE)
-        
+        else:
+            epochs_no_improve += 1
+            log_and_print(f"No improvement for {epochs_no_improve}/{EARLY_STOP_PATIENCE} epochs", LOG_FILE)
+
         log_and_print("-" * 40, LOG_FILE)
+
+        if epochs_no_improve >= EARLY_STOP_PATIENCE:
+            log_and_print(
+                f"Early stop at epoch {epoch+1}: val ADD has not improved on the best "
+                f"({best_val_loss:.6f} m) for {EARLY_STOP_PATIENCE} epochs.", LOG_FILE)
+            break
 
 if __name__ == "__main__":
     train()
