@@ -12,14 +12,14 @@ that specific job instead of applying one blind threshold to everything:
 
     age <   eta   ->  silent, this is normal
     age >=  eta   ->  warn (job overran its budget)
-    age >= 2*eta  ->  terminate
+    age >= 2*eta  ->  stop (never terminate: that would destroy the checkpoints)
     no eta tag    ->  DEFAULT_ETA_H is assumed, and the missing tag is reported
 
 Env:
     RUNPOD_API_KEY   required (or put it in /etc/runpod-sentinel.key, mode 600)
     DISCORD_WEBHOOK  optional; warnings and kills are posted there
     DEFAULT_ETA_H    fallback budget for untagged pods (default 2)
-    DRY_RUN=1        report what it would do, terminate nothing
+    DRY_RUN=1        report what it would do, stop nothing
 """
 
 import json
@@ -68,14 +68,25 @@ def notify(text):
         print("  (discord notify failed: %s)" % exc, flush=True)
 
 
+def parse_time(raw):
+    """RunPod does not return ISO 8601. It returns Go's time.Time.String(), e.g.
+    '2026-08-04 11:01:54.506 +0000 UTC'. Normalise that (and plain ISO) or give up."""
+    text = str(raw).strip().replace("Z", "+00:00")
+    text = re.sub(r"\s+[A-Z]{2,5}$", "", text)          # drop trailing zone name (UTC, CEST)
+    text = re.sub(r"\s+([+-]\d{2}:?\d{2})$", r"\1", text)  # glue the offset to the time
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def age_hours(pod, now):
     for field in AGE_FIELDS:
         raw = pod.get(field)
         if not raw:
             continue
-        try:
-            started = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        except ValueError:
+        started = parse_time(raw)
+        if started is None:
             continue
         if started.tzinfo is None:
             started = started.replace(tzinfo=timezone.utc)
@@ -88,15 +99,17 @@ def budget_hours(name):
     return (float(match.group(1)), True) if match else (DEFAULT_ETA_H, False)
 
 
-def terminate(pod_id, key):
-    query = {"query": 'mutation { podTerminate(input: {podId: "%s"}) }' % pod_id}
+def stop_pod(pod_id, key):
+    """Stop, never terminate: terminating destroys the pod disk and every checkpoint
+    on it. Stopping ends the GPU billing, which is what a runaway pod actually costs."""
     req = urllib.request.Request(
-        GRAPHQL,
-        data=json.dumps(query).encode(),
+        "%s/%s/stop" % (API, pod_id),
+        data=b"",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        method="POST",
     )
     with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode()
+        return "HTTP %s" % r.status
 
 
 def classify(pod, now):
@@ -140,14 +153,14 @@ def main():
         elif level == "warn":
             notify("RunPod: pod over budget — " + detail)
         else:
-            notify("RunPod: KILLING pod over 2x budget — " + detail)
+            notify("RunPod: STOPPING pod over 2x budget — " + detail)
             if DRY_RUN:
-                print("  DRY_RUN: not terminated")
+                print("  DRY_RUN: not stopped")
                 continue
             try:
-                print("  terminate -> " + terminate(pod["id"], key))
+                print("  stop -> " + stop_pod(pod["id"], key))
             except Exception as exc:
-                notify("RunPod: TERMINATION FAILED for %s (%s) — kill it by hand" % (detail, exc))
+                notify("RunPod: STOP FAILED for %s (%s) — stop it by hand" % (detail, exc))
 
 
 def self_test():
@@ -172,6 +185,17 @@ def self_test():
     assert classify(pod("some-pod", 5.0), now)[0] == "kill"
     assert "no eta tag" in classify(pod("some-pod", 1.0), now)[1]
     assert classify({"id": "y", "name": "n"}, now)[0] == "unknown"
+
+    # the format RunPod actually returns (Go time.Time.String), not ISO 8601 —
+    # this is what silently made every real pod unreadable
+    assert parse_time("2026-08-04 11:01:54.506 +0000 UTC") is not None
+    assert parse_time("2026-08-04T11:01:54.506Z") is not None
+    assert parse_time("2026-08-04 13:01:54 +0200 CEST") is not None
+    assert parse_time("not a date") is None
+    go_pod = {"id": "z", "name": "aml-calib-eta1h", "costPerHr": 0.22,
+              "lastStartedAt": (now - __import__("datetime").timedelta(hours=3))
+              .strftime("%Y-%m-%d %H:%M:%S.%f +0000 UTC")}
+    assert classify(go_pod, now)[0] == "kill", "pod Go-formattato oltre 2x budget deve essere fermato"
     print("self-test OK")
 
 

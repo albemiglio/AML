@@ -6,7 +6,7 @@
 # as a training process exists — so a *hung* job keeps the pod billing forever.
 #
 # This runs detached from everything else and enforces a hard deadline: past MAX_HOURS
-# the pod dies no matter what the training is doing. It also dies early when the work
+# the pod is stopped no matter what the training is doing. It also dies early when the work
 # is clearly over (no train/eval process) or clearly stuck (log stopped growing).
 #
 # Usage on the pod, started BEFORE the training:
@@ -15,9 +15,9 @@
 #
 # Env:
 #   MAX_HOURS=8        hard deadline from watchdog start (fractional allowed)
-#   IDLE_MINUTES=20    no training process, or no log growth, for this long -> terminate
+#   IDLE_MINUTES=20    no training process, or no log growth, for this long -> stop the pod
 #   WATCH_LOG=path     log whose growth counts as progress (default: results_4_pipeline.log)
-#   DRY_RUN=1          log the decision but never actually terminate
+#   DRY_RUN=1          log the decision but never actually stop it
 
 set -uo pipefail
 
@@ -34,30 +34,36 @@ if [ -z "${RUNPOD_POD_ID:-}" ]; then
     exit 0
 fi
 if [ -z "${RUNPOD_API_KEY:-}" ] && [ -z "${DRY_RUN:-}" ]; then
-    log "FATAL: RUNPOD_API_KEY missing — the pod could NOT be terminated. Refusing to run."
+    log "FATAL: RUNPOD_API_KEY missing — the pod could NOT be stopped. Refusing to run."
     log "Set it, or re-run with DRY_RUN=1 to test the logic."
     exit 1
 fi
 
-terminate() {
-    log "TERMINATING pod $RUNPOD_POD_ID — reason: $1"
+# Stop, never terminate. Terminating destroys the pod disk and takes the best
+# checkpoint with it — the watchdog would be deleting exactly the work it exists to
+# protect. Stopping ends GPU billing, which is the part that costs, and leaves
+# /workspace intact so a finished or crashed run stays recoverable.
+stop_pod() {
+    log "STOPPING pod $RUNPOD_POD_ID — reason: $1"
     if [ -n "${DRY_RUN:-}" ]; then
         log "DRY_RUN set: no API call made."
         exit 0
     fi
-    # retry: a terminate that silently fails is the whole failure mode we are guarding
+    # retry: a stop that silently fails is the whole failure mode we are guarding
     for attempt in 1 2 3 4 5; do
-        response=$(curl -s --max-time 30 -X POST https://api.runpod.io/graphql \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $RUNPOD_API_KEY" \
-            -d "{\"query\":\"mutation { podTerminate(input: {podId: \\\"$RUNPOD_POD_ID\\\"}) }\"}")
-        log "attempt $attempt -> ${response:-<empty>}"
-        case "$response" in
-            *error*|"") sleep $((attempt * 20)) ;;
-            *) log "Termination accepted."; exit 0 ;;
+        code=$(curl -s -o /tmp/wd_stop.json -w '%{http_code}' --max-time 30 -X POST \
+            "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop" \
+            -H "Authorization: Bearer $RUNPOD_API_KEY")
+        log "attempt $attempt -> HTTP $code $(head -c 120 /tmp/wd_stop.json 2>/dev/null)"
+        case "$code" in
+            200|201|202|204)
+                log "Stop accepted. GPU billing ended, /workspace preserved."
+                exit 0
+                ;;
         esac
+        sleep $((attempt * 20))
     done
-    log "ALL TERMINATION ATTEMPTS FAILED — pod is still billing, kill it by hand."
+    log "ALL STOP ATTEMPTS FAILED — pod is still billing, stop it by hand."
     exit 1
 }
 
@@ -85,7 +91,7 @@ while true; do
 
     now=$(date +%s)
     if [ "$now" -ge "$deadline" ]; then
-        terminate "hard deadline of ${MAX_HOURS}h reached"
+        stop_pod "hard deadline of ${MAX_HOURS}h reached"
     fi
 
     size=$(log_size)
@@ -98,9 +104,9 @@ while true; do
 
     if [ "$idle_for" -ge "$idle_limit" ]; then
         if pgrep -f "$JOB_PATTERN" > /dev/null 2>&1; then
-            terminate "training alive but log frozen for ${IDLE_MINUTES}min — hung"
+            stop_pod "training alive but log frozen for ${IDLE_MINUTES}min — hung"
         fi
-        terminate "no training process for ${IDLE_MINUTES}min — work is done"
+        stop_pod "no training process for ${IDLE_MINUTES}min — work is done"
     fi
 
     remaining=$(( (deadline - now) / 60 ))
