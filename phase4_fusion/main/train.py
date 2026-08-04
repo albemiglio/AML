@@ -186,15 +186,16 @@ def train():
                 val_trans_mse += F.mse_loss(pred_T, gt_T).item()
                 val_rot_mse += F.mse_loss(pred_R, gt_R).item()
 
-                for i in range(rgb.size(0)):
+                # Un solo forward per batch invece di uno per campione: la validation
+                # dominava il tempo di epoca (14s su 18) girando la loss 64 volte in
+                # Python. Il valore per campione e' identico a prima.
+                sample_losses = criterion(
+                    pred_R, pred_T, gt_R, gt_T, model_points, per_sample=True
+                )
+                val_loss_total += sample_losses.sum().item()
+                for i, sample_loss in enumerate(sample_losses.tolist()):
                     curr_id = ids[i].item()
-                    # Validazione rigorosa con ADD standard per monitoraggio reale
-                    loss = criterion(
-                        pred_R[i:i+1], pred_T[i:i+1], gt_R[i:i+1], gt_T[i:i+1], 
-                        model_points[i:i+1]
-                    )
-                    val_loss_total += loss.item()
-                    obj_errors[curr_id] += loss.item()
+                    obj_errors[curr_id] += sample_loss
                     obj_counts[curr_id] += 1
 
         avg_val_loss = val_loss_total / len(val_set)
