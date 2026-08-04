@@ -63,7 +63,17 @@ terminate() {
 
 log_size() { [ -f "$WATCH_LOG" ] && wc -c < "$WATCH_LOG" | tr -d ' ' || echo 0; }
 
-deadline=$(( $(date +%s) + $(printf '%.0f' "$(echo "$MAX_HOURS * 3600" | bc -l)") ))
+# awk, not bc: bc is absent from the RunPod pytorch images, and an empty result here
+# would silently make the deadline "now" — the watchdog would kill the pod on its first
+# poll. If the budget cannot be computed, refuse to run rather than terminate anything.
+budget_seconds=$(awk -v h="$MAX_HOURS" 'BEGIN{printf "%.0f", h*3600}' 2>/dev/null)
+case "$budget_seconds" in
+    ''|0|*[!0-9]*)
+        log "FATAL: MAX_HOURS='$MAX_HOURS' is not a usable number. Exiting without guarding."
+        exit 1
+        ;;
+esac
+deadline=$(( $(date +%s) + budget_seconds ))
 idle_limit=$(( IDLE_MINUTES * 60 ))
 idle_for=0
 last_size=$(log_size)
