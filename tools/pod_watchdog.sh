@@ -24,7 +24,9 @@ set -uo pipefail
 MAX_HOURS="${MAX_HOURS:-8}"
 IDLE_MINUTES="${IDLE_MINUTES:-20}"
 WATCH_LOG="${WATCH_LOG:-$(cd "$(dirname "$0")/.." && pwd)/results_4_pipeline.log}"
-JOB_PATTERN='python.*(train|evaluate)\.py'
+# No \.py suffix: jobs are launched as `python -m package.module`, whose cmdline
+# carries no ".py" — the old pattern never matched a single real training.
+JOB_PATTERN='python.*(train|evaluate)'
 POLL_SECONDS=60
 
 log() { echo "[watchdog $(date -u +'%H:%M:%S')] $*"; }
@@ -94,8 +96,12 @@ while true; do
         stop_pod "hard deadline of ${MAX_HOURS}h reached"
     fi
 
+    # A growing log is the only liveness signal that matters: requiring a matching
+    # process too made setup phases (download/unzip) count as idle and killed a
+    # healthy session 9 minutes into training. The process check only labels the
+    # stop reason below.
     size=$(log_size)
-    if pgrep -f "$JOB_PATTERN" > /dev/null 2>&1 && [ "$size" != "$last_size" ]; then
+    if [ "$size" != "$last_size" ]; then
         idle_for=0
     else
         idle_for=$(( idle_for + POLL_SECONDS ))
