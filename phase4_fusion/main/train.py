@@ -39,6 +39,8 @@ def train():
     # di prima, quindi il tetto di epoche sale e a decidere quando fermarsi è la validation.
     EPOCHS = int(os.environ.get("EPOCHS", "400"))
     EARLY_STOP_PATIENCE = int(os.environ.get("EARLY_STOP_PATIENCE", "30"))
+    # raw = baseline del paper · norm = depth ancorata (A) · xyz = mappa XYZ (B)
+    DEPTH_MODE = os.environ.get("DEPTH_MODE", "raw")
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     AMP_ENABLED = (DEVICE.type == "cuda")
     AMP_DTYPE = torch.bfloat16 if (DEVICE.type == "cuda" and torch.cuda.is_bf16_supported()) else torch.float16
@@ -46,19 +48,21 @@ def train():
     
     RESULTS_DIR = "results_4_main"
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    SAVE_PATH_BEST = os.path.join(RESULTS_DIR, "pose_rgbd_fusion_best.pth")
-    CHECKPOINT_PATH = os.path.join(RESULTS_DIR, "pose_rgbd_checkpoint.pth")
+    # Per-mode files: the raw/norm/xyz ablation runs must not overwrite each other.
+    SAVE_PATH_BEST = os.path.join(RESULTS_DIR, f"pose_rgbd_fusion_best_{DEPTH_MODE}.pth")
+    CHECKPOINT_PATH = os.path.join(RESULTS_DIR, f"pose_rgbd_checkpoint_{DEPTH_MODE}.pth")
     LOG_FILE = os.path.join(RESULTS_DIR, f"train_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
     N_POINTS = 500
 
     wandb.init(
         project="linemod-pose-estimation",
-        name="RGBD_augmentation",
+        name=f"RGBD_official15_{DEPTH_MODE}",
         resume="allow",
         config={
             "learning_rate": LEARNING_RATE,
             "architecture": "RGBD_FusionPredictor",
-            "dataset": "LineMod_RGBD",
+            "dataset": "LineMod_RGBD_official15",
+            "depth_mode": DEPTH_MODE,
             "epochs": EPOCHS,
             "batch_size": BATCH_SIZE,
             "weight_decay": 1e-4,
@@ -70,8 +74,10 @@ def train():
     object_ids = sorted(gt_cache.keys())
     info_cache = load_info_cache(ROOT_DATASET, object_ids)
     
-    train_set = LineModDatasetRGBD(ROOT_DATASET, train_samples, gt_cache, info_cache, n_points=N_POINTS, is_train=True)
-    val_set = LineModDatasetRGBD(ROOT_DATASET, val_samples, gt_cache, info_cache, n_points=N_POINTS, is_train=False)
+    train_set = LineModDatasetRGBD(ROOT_DATASET, train_samples, gt_cache, info_cache, n_points=N_POINTS, is_train=True,
+                                   depth_mode=DEPTH_MODE)
+    val_set = LineModDatasetRGBD(ROOT_DATASET, val_samples, gt_cache, info_cache, n_points=N_POINTS, is_train=False,
+                                 depth_mode=DEPTH_MODE)
 
     train_loader = DataLoader(
         train_set, batch_size=BATCH_SIZE, shuffle=True,
@@ -125,6 +131,7 @@ def train():
             gt_R = batch["R_matrix"].to(DEVICE, non_blocking=True)
             gt_T = batch["translation_3d"].to(DEVICE, non_blocking=True)
             model_points = batch["model_points"].to(DEVICE, non_blocking=True)
+            t_anchor = batch["t_anchor"].to(DEVICE, non_blocking=True)
 
             rgb = gpu_aug(rgb_u8, training=True)
             depth = depth_1ch.expand(-1, 3, -1, -1)
@@ -132,6 +139,8 @@ def train():
             optimizer.zero_grad()
             with autocast(DEVICE.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
                 pred_T, pred_R = model(rgb, depth, meta)
+                # la testa regredisce il residuo rispetto all'ancora 3D (zero in raw)
+                pred_T = pred_T + t_anchor
                 batch_loss = criterion(pred_R, pred_T, gt_R, gt_T, model_points)
 
             with torch.no_grad():
@@ -174,13 +183,14 @@ def train():
                 gt_R = batch["R_matrix"].to(DEVICE, non_blocking=True)
                 gt_T = batch["translation_3d"].to(DEVICE, non_blocking=True)
                 model_points, ids = batch["model_points"].to(DEVICE, non_blocking=True), batch["obj_id"]
+                t_anchor = batch["t_anchor"].to(DEVICE, non_blocking=True)
 
                 rgb = gpu_aug(rgb_u8, training=False)
                 depth = depth_1ch.expand(-1, 3, -1, -1)
 
                 with autocast(DEVICE.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
                     pred_T, pred_R = model(rgb, depth, meta)
-                pred_T = pred_T.float()
+                pred_T = pred_T.float() + t_anchor
                 pred_R = pred_R.float()
 
                 val_trans_mse += F.mse_loss(pred_T, gt_T).item()

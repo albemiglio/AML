@@ -12,7 +12,23 @@ from phase4_fusion.main.rgbd_utils import (
 )
 
 class LineModDatasetRGBD(Dataset):
-    def __init__(self, dataset_root, samples, gt_cache, info_cache, img_size=(224, 224), n_points=500, is_train=False):
+    # Scale for normalized geometry channels: ~object radius, so values land in a
+    # unit-ish range an ImageNet-pretrained backbone can digest.
+    DEPTH_NORM_SCALE = 0.15  # meters
+
+    def __init__(self, dataset_root, samples, gt_cache, info_cache, img_size=(224, 224), n_points=500, is_train=False,
+                 depth_mode="raw"):
+        """depth_mode selects the geometry input representation:
+
+        raw  -- depth in meters, as-is (paper baseline). Anchor is zero, the head
+                regresses the absolute translation.
+        norm -- depth centered on the bbox median and scaled (variant A). The pose
+                target becomes a residual w.r.t. a 3D anchor backprojected from the
+                bbox depth: the network no longer guesses Z~1m from a global vector.
+        xyz  -- 3-channel metric XYZ map from depth+K, expressed relative to the same
+                anchor (variant B): per-pixel geometry instead of a flattened hint.
+        """
+        assert depth_mode in ("raw", "norm", "xyz"), depth_mode
         self.dataset_root = dataset_root
         self.samples = samples
         self.gt_cache = gt_cache
@@ -20,6 +36,7 @@ class LineModDatasetRGBD(Dataset):
         self.img_size = img_size
         self.n_points = n_points
         self.is_train = is_train
+        self.depth_mode = depth_mode
 
         self.model_points_cache = {}
         unique_obj_ids = set([s[0] for s in samples])
@@ -42,6 +59,25 @@ class LineModDatasetRGBD(Dataset):
             # Convert mm to meters for consistency with depth
             return torch.from_numpy(points).float() / 1000.0
     
+    def _bbox_anchor(self, depth_meters, bbox, K):
+        """Backproject the depth inside the TIGHT bbox and take the per-axis median:
+        a 3D point on the visible surface of the object. The head then regresses the
+        (small) surface-to-center offset instead of an absolute position ~1m away.
+        Median over the tight box, not the square crop: less background inside."""
+        h_img, w_img = depth_meters.shape[:2]
+        x, y, w, h = bbox
+        x0, y0 = max(0, int(x)), max(0, int(y))
+        x1, y1 = min(w_img, int(x + w)), min(h_img, int(y + h))
+        box = depth_meters[y0:y1, x0:x1]
+        vs, us = np.nonzero(box > 0)
+        if len(vs) < 20:  # depth hole over the whole box: no anchor, absolute fallback
+            return np.zeros(3, dtype=np.float32)
+        d = box[vs, us]
+        fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+        X = ((us + x0) - cx) * d / fx
+        Y = ((vs + y0) - cy) * d / fy
+        return np.array([np.median(X), np.median(Y), np.median(d)], dtype=np.float32)
+
     def __len__(self):
         return len(self.samples)
 
@@ -79,12 +115,39 @@ class LineModDatasetRGBD(Dataset):
         depth_crop = depth_meters[t:b, l:r]
 
         rgb_crop = cv2.resize(rgb_crop, self.img_size, interpolation=cv2.INTER_LINEAR)
+        # NEAREST: depth/XYZ are metric values, interpolating across object borders
+        # would fabricate 3D points that exist nowhere in the scene.
         depth_crop = cv2.resize(depth_crop, self.img_size, interpolation=cv2.INTER_NEAREST)
 
         # Raw uint8 RGB (3,H,W) — normalize + augment happen on GPU in train loop.
         rgb_tensor = torch.from_numpy(np.ascontiguousarray(rgb_crop.transpose(2, 0, 1)))  # uint8
-        # Single-channel float depth (1,H,W) — replicated to 3ch on GPU before model.
-        depth_tensor = torch.from_numpy(depth_crop).float().unsqueeze(0)
+
+        t_anchor = torch.zeros(3, dtype=torch.float32)
+        if self.depth_mode == "raw":
+            # Single-channel float depth (1,H,W) — replicated to 3ch on GPU before model.
+            depth_tensor = torch.from_numpy(depth_crop).float().unsqueeze(0)
+        else:
+            anchor = self._bbox_anchor(depth_meters, [x, y, w, h], K)
+            t_anchor = torch.from_numpy(anchor)
+            s = self.DEPTH_NORM_SCALE
+            if self.depth_mode == "norm":
+                dn = np.where(depth_crop > 0, (depth_crop - anchor[2]) / s, 0.0)
+                depth_tensor = torch.from_numpy(np.clip(dn, -4.0, 4.0).astype(np.float32)).unsqueeze(0)
+            else:  # xyz
+                # Pixel coords of the resized grid, mapped back to the original image
+                # so the backprojection uses the true intrinsics.
+                fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+                ws, hs = self.img_size
+                u = l + (np.arange(ws, dtype=np.float32) + 0.5) * (r - l) / ws
+                v = t + (np.arange(hs, dtype=np.float32) + 0.5) * (b - t) / hs
+                uu, vv = np.meshgrid(u, v)
+                valid = depth_crop > 0
+                X = (uu - cx) * depth_crop / fx
+                Y = (vv - cy) * depth_crop / fy
+                xyz = np.stack([X, Y, depth_crop], axis=0)
+                xyz = (xyz - anchor.reshape(3, 1, 1)) / s
+                xyz = np.clip(xyz, -4.0, 4.0) * valid[None]
+                depth_tensor = torch.from_numpy(xyz.astype(np.float32))
 
         meta_tensor = build_meta_tensor([x, y, w, h], K, rgb_img.shape)
         meta_info = meta_tensor.squeeze(0)
@@ -102,5 +165,7 @@ class LineModDatasetRGBD(Dataset):
             "translation_3d": T_vec,
             "obj_id": obj_id,
             "R_matrix": R_mat,
-            "model_points": model_points
+            "model_points": model_points,
+            # zero in raw mode: pred_T + t_anchor is a no-op there, one code path
+            "t_anchor": t_anchor,
         }
