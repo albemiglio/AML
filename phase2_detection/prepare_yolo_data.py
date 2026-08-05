@@ -19,8 +19,10 @@ from common.data_split import prepare_data_and_splits
 # Path to original LineMod dataset
 SOURCE_ROOT = 'datasets/linemod/Linemod_preprocessed'
 
-# Output path for YOLO-ready dataset
-OUTPUT_DIR = 'datasets/linemod/linemod_yolo_format'
+# Output path for YOLO-ready dataset. Overridable: on pods the 15GB network volume
+# cannot hold dataset (8.6G) + this derived copy (7G) together — point it at the
+# container disk there and regenerate per session.
+OUTPUT_DIR = os.environ.get('YOLO_DATA_DIR', 'datasets/linemod/linemod_yolo_format')
 
 # Class name mapping (LineMod ID -> Name)
 CLASS_NAMES = {
