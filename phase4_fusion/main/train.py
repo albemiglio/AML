@@ -41,6 +41,14 @@ def train():
     EARLY_STOP_PATIENCE = int(os.environ.get("EARLY_STOP_PATIENCE", "30"))
     # raw = baseline del paper · norm = depth ancorata (A) · xyz = mappa XYZ (B)
     DEPTH_MODE = os.environ.get("DEPTH_MODE", "raw")
+    # Multi-seed: SEED fissa il caso, RUN_TAG separa checkpoint e run wandb — senza tag
+    # un secondo run dello stesso modo farebbe resume del checkpoint del primo.
+    SEED = int(os.environ.get("SEED", "42"))
+    RUN_TAG = os.environ.get("RUN_TAG", "")
+    import random as _random
+    import numpy as _np
+    torch.manual_seed(SEED); torch.cuda.manual_seed_all(SEED)
+    _np.random.seed(SEED); _random.seed(SEED)
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     AMP_ENABLED = (DEVICE.type == "cuda")
     AMP_DTYPE = torch.bfloat16 if (DEVICE.type == "cuda" and torch.cuda.is_bf16_supported()) else torch.float16
@@ -49,20 +57,21 @@ def train():
     RESULTS_DIR = "results_4_main"
     os.makedirs(RESULTS_DIR, exist_ok=True)
     # Per-mode files: the raw/norm/xyz ablation runs must not overwrite each other.
-    SAVE_PATH_BEST = os.path.join(RESULTS_DIR, f"pose_rgbd_fusion_best_{DEPTH_MODE}.pth")
-    CHECKPOINT_PATH = os.path.join(RESULTS_DIR, f"pose_rgbd_checkpoint_{DEPTH_MODE}.pth")
+    SAVE_PATH_BEST = os.path.join(RESULTS_DIR, f"pose_rgbd_fusion_best_{DEPTH_MODE}{RUN_TAG}.pth")
+    CHECKPOINT_PATH = os.path.join(RESULTS_DIR, f"pose_rgbd_checkpoint_{DEPTH_MODE}{RUN_TAG}.pth")
     LOG_FILE = os.path.join(RESULTS_DIR, f"train_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
     N_POINTS = 500
 
     wandb.init(
         project="linemod-pose-estimation",
-        name=f"RGBD_official15_{DEPTH_MODE}",
+        name=f"RGBD_official15_{DEPTH_MODE}{RUN_TAG}",
         resume="allow",
         config={
             "learning_rate": LEARNING_RATE,
             "architecture": "RGBD_FusionPredictor",
             "dataset": "LineMod_RGBD_official15",
             "depth_mode": DEPTH_MODE,
+            "seed": SEED,
             "epochs": EPOCHS,
             "batch_size": BATCH_SIZE,
             "weight_decay": 1e-4,

@@ -59,6 +59,11 @@ def main():
 
     ok, tot, errs = defaultdict(int), defaultdict(int), defaultdict(list)
     done = 0
+    # PER_SAMPLE_CSV: righe (obj_id,img_id,err_mm,thr_mm,hit) per le analisi a valle
+    # (accuracy vs distanza di viewpoint). L'ordine del loader e' quello di test_samples
+    # (shuffle=False), quindi l'indice progressivo identifica il campione.
+    csv_path = os.environ.get("PER_SAMPLE_CSV", "")
+    rows = []
     with torch.no_grad():
         for b in dl:
             rgb = gpu_aug(b["rgb"].to(device), training=False)
@@ -79,9 +84,18 @@ def main():
                 errs[oid].append(e * 1000.0)                               # report in mm
                 if e < thr:
                     ok[oid] += 1
+                if csv_path:
+                    _, img_id = test_samples[done + i]
+                    rows.append(f"{oid},{img_id},{e*1000.0:.2f},{thr*1000.0:.2f},{int(e < thr)}")
             done += len(ids)
             if done % 3200 == 0:
                 print(f"  {done}/{len(ds)}", flush=True)
+
+    if csv_path:
+        with open(csv_path, "w") as f:
+            f.write("obj_id,img_id,err_mm,thr_mm,hit\n")
+            f.write("\n".join(rows) + "\n")
+        print(f"per-sample csv -> {csv_path} ({len(rows)} rows)")
 
     print("\n" + "=" * 72)
     print(f"{'object':<14}{'diam mm':>9}{'thr mm':>9}{'mean err mm':>13}{'ADD(-S) %':>12}")
