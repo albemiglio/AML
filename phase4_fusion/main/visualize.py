@@ -10,6 +10,7 @@ from ultralytics import YOLO
 
 from phase4_fusion.main.model import RGBD_FusionPredictor
 from phase3_baseline.dataset import LineModDataset
+from phase4_fusion.main.dataset import LineModDatasetRGBD
 from common.data_split import prepare_data_and_splits
 from phase4_fusion.main.rgbd_utils import (
     load_info_cache,
@@ -67,9 +68,12 @@ def main():
     args = parser.parse_args()
 
     ROOT_DATASET = "datasets/linemod/Linemod_preprocessed"
-    RGBD_MODEL_PATH = "weights/fusion_main/pose_rgbd_fusion_best.pth"
-    YOLO_PATH = 'weights/yolo/best.pt'
+    DEPTH_MODE = os.environ.get("DEPTH_MODE", "norm")
+    assert DEPTH_MODE in ("raw", "norm"), "visualize supporta raw|norm"
+    RGBD_MODEL_PATH = os.environ.get("CKPT", f"results_4_main/pose_rgbd_fusion_best_{DEPTH_MODE}.pth")
+    YOLO_PATH = os.environ.get("YOLO_WEIGHTS", "weights/yolo/best.pt")
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    print(f"depth_mode={DEPTH_MODE}  ckpt={RGBD_MODEL_PATH}  yolo={YOLO_PATH}")
 
     if args.save_dir:
         os.makedirs(args.save_dir, exist_ok=True)
@@ -152,8 +156,18 @@ def main():
                 continue
 
             rgb_tensor = prepare_rgb_tensor(img_bgr, crop_coords)
-            depth_tensor = prepare_depth_tensor(depth_meters, crop_coords)
             meta_tensor = build_meta_tensor(yolo_bbox, cam_K, img_bgr.shape)
+            anchor = np.zeros(3, dtype=np.float32)
+            if DEPTH_MODE == "norm":
+                # stessa pipeline del training: depth centrata sull'ancora della bbox
+                anchor = LineModDatasetRGBD._bbox_anchor(depth_meters, yolo_bbox, cam_K)
+                l, t, r, b = crop_coords
+                d_crop = cv2.resize(depth_meters[t:b, l:r], (224, 224), interpolation=cv2.INTER_NEAREST)
+                dn = np.where(d_crop > 0, (d_crop - anchor[2]) / LineModDatasetRGBD.DEPTH_NORM_SCALE, 0.0)
+                dn = np.clip(dn, -4.0, 4.0).astype(np.float32)
+                depth_tensor = torch.from_numpy(np.repeat(dn[None], 3, axis=0)).unsqueeze(0)
+            else:
+                depth_tensor = prepare_depth_tensor(depth_meters, crop_coords)
 
             if rgb_tensor is None or depth_tensor is None or meta_tensor is None:
                 print(f"Warning: Preprocessing failed for obj {obj_id:02d}.")
@@ -165,7 +179,8 @@ def main():
                 meta_tensor.to(DEVICE)
             )
             R_pred = pred_R[0].cpu().numpy()  # (3, 3) from SO(3)
-            T_pred = (pred_T[0].cpu().numpy() * 1000.0).astype(np.float32)  # converti in millimetri
+            # la testa predice il residuo rispetto all'ancora (metri) -> millimetri
+            T_pred = ((pred_T[0].cpu().numpy() + anchor) * 1000.0).astype(np.float32)
 
             R_gt = sample["R"].cpu().numpy() if torch.is_tensor(sample["R"]) else np.array(sample["R"], dtype=np.float32)
             T_gt = sample["T"].cpu().numpy() if torch.is_tensor(sample["T"]) else np.array(sample["T"], dtype=np.float32)

@@ -59,7 +59,8 @@ class LineModDatasetRGBD(Dataset):
             # Convert mm to meters for consistency with depth
             return torch.from_numpy(points).float() / 1000.0
     
-    def _bbox_anchor(self, depth_meters, bbox, K):
+    @staticmethod
+    def _bbox_anchor(depth_meters, bbox, K):
         """Backproject the depth inside the TIGHT bbox and take the per-axis median:
         a 3D point on the visible surface of the object. The head then regresses the
         (small) surface-to-center offset instead of an absolute position ~1m away.
